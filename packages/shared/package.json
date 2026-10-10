@@ -1,0 +1,26 @@
+{
+  "name": "@belloacademy/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Types, schémas de validation et utilitaires partagés (sans dépendance runtime lourde)",
+  "exports": {
+    ".": "./src/index.ts",
+    "./validation": "./src/validation/index.ts",
+    "./domain": "./src/domain/index.ts",
+    "./utils": "./src/utils/index.ts",
+    "./storage": "./src/storage/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vitest": "5.0.3"
+  }
+}

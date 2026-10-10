@@ -1,0 +1,45 @@
+{
+  "name": "belloacademy",
+  "version": "0.1.0",
+  "private": true,
+  "description": "BelloAcademy — plateforme SaaS multi-tenant de formation en ligne (Next.js, Prisma, PostgreSQL, Jitsi Meet)",
+  "packageManager": "pnpm@10.29.3",
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @belloacademy/web dev",
+    "build": "pnpm --filter @belloacademy/web build",
+    "start": "pnpm --filter @belloacademy/web start",
+    "worker": "pnpm --filter @belloacademy/web worker",
+    "lint": "pnpm -r --if-present lint",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "test:unit": "pnpm --filter @belloacademy/shared test && pnpm --filter @belloacademy/web test:unit",
+    "test:integration": "pnpm --filter @belloacademy/web test:integration",
+    "test:e2e": "pnpm --filter @belloacademy/web test:e2e",
+    "test:all": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run test:integration",
+    "db:generate": "pnpm --filter @belloacademy/web db:generate",
+    "db:migrate": "pnpm --filter @belloacademy/web db:migrate",
+    "db:deploy": "pnpm --filter @belloacademy/web db:deploy",
+    "db:seed": "pnpm --filter @belloacademy/web db:seed",
+    "db:reset": "pnpm --filter @belloacademy/web db:reset",
+    "db:rls": "pnpm --filter @belloacademy/web db:rls",
+    "setup": "pnpm install && pnpm run db:generate && pnpm run db:deploy && pnpm run db:seed",
+    "dev:db": "bash infra/scripts/dev-db.sh"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "@tailwindcss/oxide",
+      "esbuild",
+      "prisma",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

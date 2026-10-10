@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+.next/
+out/
+dist/
+build/
+*.tsbuildinfo
+
+# Prisma generated client
+apps/web/src/generated/
+prisma/generated/
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Runtime data (local storage driver, dev mail spool, uploads, backups)
+var/
+storage/
+*.sqlite
+*.sqlite-journal
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Test / coverage
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Editors & OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Docker volumes
+infra/data/
+infra/letsencrypt/
+infra/caddy/data/
+infra/caddy/config/
