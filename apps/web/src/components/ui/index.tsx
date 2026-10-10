@@ -250,6 +250,21 @@ export function Stat({ label, value, hint }: { label: string; value: ReactNode; 
   );
 }
 
+/* -------------------------------------------------------------------- Chargeur */
+
+/** Indicateur de chargement accessible (annoncé aux lecteurs d'écran). */
+export function Spinner({ label = "Chargement…" }: { label?: string }) {
+  return (
+    <span role="status" aria-live="polite" className="inline-flex items-center gap-2">
+      <span
+        aria-hidden
+        className="size-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+      />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
 /* ------------------------------------------------------------------ Tableaux */
 
 export function Table({ head, children }: { head: ReactNode[]; children: ReactNode }) {

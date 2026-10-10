@@ -1,6 +1,6 @@
 /** Inscriptions et progression : /api/enrollments/[...path] */
 
-import { enrollmentCreateSchema, enrollmentUpdateSchema, progressUpdateSchema, uuidSchema } from "@belloacademy/shared";
+import { enrollmentCreateSchema, progressUpdateSchema, uuidSchema } from "@belloacademy/shared";
 
 import { jsonCreated, jsonOk, parseBody, searchParams, validate } from "@/lib/http/api";
 import { createDispatcher } from "@/lib/http/dispatch";

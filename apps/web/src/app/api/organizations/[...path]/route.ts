@@ -4,7 +4,7 @@ import { memberInviteSchema, memberUpdateSchema, organizationCreateSchema, organ
 
 import { requireAuth, requireSuperAdmin } from "@/lib/auth/authorization";
 import { prismaPlatform } from "@/lib/db/prisma";
-import { jsonCreated, jsonOk, parseBody, route, searchParams } from "@/lib/http/api";
+import { jsonCreated, jsonOk, parseBody, searchParams } from "@/lib/http/api";
 import { orgScope } from "@/lib/http/tenant";
 import { listAuditLogs } from "@/lib/audit";
 import { notFound } from "@/lib/errors";

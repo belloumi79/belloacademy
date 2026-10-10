@@ -6,7 +6,7 @@
  * organisation ne peut être lue ou modifiée, même en cas d'erreur d'appel.
  */
 
-import { gradeAnswer, summarizeAttempt, type QuestionAnswerInput } from "@belloacademy/shared";
+import { gradeAnswer, summarizeAttempt, toPercent, type QuestionAnswerInput } from "@belloacademy/shared";
 
 import { prisma, withTenant } from "@/lib/db/prisma";
 import { conflict, forbidden, notFound } from "@/lib/errors";
@@ -554,13 +554,15 @@ export async function gradeAnswerManually(input: {
       where: { id: answer.attempt.quizId },
       select: { passingScore: true, questions: { select: { points: true } } },
     });
-    const score = answers.reduce((total, entry) => total + entry.pointsAwarded, 0);
-    const maxScore = (quiz?.questions ?? []).reduce((total, question) => total + question.points, 0);
+    const rawScore = answers.reduce((total, entry) => total + entry.pointsAwarded, 0);
+    const rawMaxScore = (quiz?.questions ?? []).reduce((total, question) => total + question.points, 0);
+    // Le seuil est un pourcentage : le score est normalisé sur 100 avant comparaison.
+    const score = toPercent(rawScore, rawMaxScore);
     const passed = score >= (quiz?.passingScore ?? 0);
 
     const attempt = await tx.quizAttempt.update({
       where: { id: answer.attemptId },
-      data: { score, maxScore, passed, status: "GRADED", gradedAt: new Date() },
+      data: { score, maxScore: 100, passed, status: "GRADED", gradedAt: new Date() },
       select: { id: true, userId: true, score: true, maxScore: true, passed: true },
     });
 
@@ -571,7 +573,7 @@ export async function gradeAnswerManually(input: {
         actorUserId: input.actorUserId,
         entityType: "QuizAttempt",
         entityId: attempt.id,
-        metadata: { score, maxScore, passed },
+        metadata: { score, maxScore: 100, passed },
       },
       tx,
     );

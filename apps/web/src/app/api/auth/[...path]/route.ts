@@ -16,7 +16,7 @@ import {
 import { getAuthContext, requireAuth } from "@/lib/auth/authorization";
 import { clearSessionCookie, createSession } from "@/lib/auth/session";
 import { clearCsrfToken, issueCsrfToken } from "@/lib/csrf";
-import { clientIp, jsonOk, parseBody, route } from "@/lib/http/api";
+import { clientIp, jsonOk, parseBody } from "@/lib/http/api";
 import { createDispatcher, unsupportedMethod } from "@/lib/http/dispatch";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import {
@@ -90,7 +90,7 @@ const dispatch = createDispatcher([
   {
     method: "POST",
     pattern: "resend-verification",
-    handler: async ({ request }) => {
+    handler: async () => {
       const context = await requireAuth();
       await enforceRateLimit("emailVerification", context.user.id);
       await resendVerification(context.user.id);

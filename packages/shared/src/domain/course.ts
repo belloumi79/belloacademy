@@ -12,6 +12,13 @@ export const COURSE_STATUS_LABELS: Record<CourseStatus, string> = {
 export const COURSE_LEVELS = ["BEGINNER", "INTERMEDIATE", "ADVANCED"] as const;
 export type CourseLevel = (typeof COURSE_LEVELS)[number];
 
+/** Libellés des langues d'enseignement proposées. */
+export const COURSE_LANGUAGE_LABELS: Record<string, string> = {
+  fr: "Français",
+  ar: "العربية",
+  en: "English",
+};
+
 export const COURSE_LEVEL_LABELS: Record<CourseLevel, string> = {
   BEGINNER: "Débutant",
   INTERMEDIATE: "Intermédiaire",

@@ -113,14 +113,19 @@ export async function storeUploadedBody(input: {
   contentType: string | null;
 }): Promise<{ sizeBytes: number }> {
   const asset = await withTenant(input.organizationId, (tx) =>
-    tx.asset.findFirst({ where: { id: input.assetId }, select: { id: true, objectKey: true, mimeType: true, uploaderId: true } }),
+    tx.asset.findFirst({
+      where: { id: input.assetId },
+      select: { id: true, objectKey: true, mimeType: true, uploaderId: true, filename: true },
+    }),
   );
   if (!asset) throw notFound("Fichier introuvable.");
 
+  // La validation porte sur le nom d'origine : la clé d'objet contient des
+  // séparateurs de dossiers et échouerait sur le contrôle de nom de fichier.
   const check = validateUpload({
     mimeType: asset.mimeType,
     sizeBytes: input.body.byteLength,
-    filename: asset.objectKey,
+    filename: asset.filename,
   });
   if (!check.ok) throw unsupportedMediaType(check.reason);
 

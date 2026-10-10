@@ -16,7 +16,7 @@
 import { SignJWT } from "jose";
 
 import { env } from "@/env";
-import { AppError, badRequest, internal } from "@/lib/errors";
+import { internal } from "@/lib/errors";
 import { buildJitsiRoomName, isValidJitsiRoomName, type LiveParticipantRole } from "@belloacademy/shared";
 import { generateRoomSuffix } from "@/lib/auth/tokens";
 
@@ -44,15 +44,24 @@ export type JitsiJoinDescriptor = {
   expiresAt: Date | null;
 };
 
-/** Génère un nom de salle non devinable pour une session. */
+/**
+ * Génère un nom de salle non devinable pour une session.
+ *
+ * Le préfixe d'instance est intégré à la partie lisible (et non collé devant le
+ * nom déjà construit) : la partie lisible reste ainsi bornée à 20 caractères,
+ * conformément à `JITSI_ROOM_PATTERN`. La partie aléatoire (24 caractères
+ * hexadécimaux) garantit qu'un nom de salle n'est pas devinable.
+ */
 export function generateRoomName(courseId: string): string {
   const prefix = env().JITSI_ROOM_PREFIX.replace(/[^a-z0-9]/gi, "").toLowerCase() || "belloacademy";
-  const room = buildJitsiRoomName(courseId, generateRoomSuffix());
-  const withPrefix = room.startsWith(prefix) ? room : `${prefix}${room}`;
-  if (!isValidJitsiRoomName(withPrefix)) {
+  const suffix = generateRoomSuffix();
+  const slug = courseId.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  const readable = `${prefix}${slug}`.slice(0, 20).padEnd(8, suffix);
+  const room = `${readable}-${suffix}`;
+  if (!isValidJitsiRoomName(room)) {
     throw internal("Nom de salle Jitsi invalide.");
   }
-  return withPrefix;
+  return room;
 }
 
 export function jitsiDomain(): string {

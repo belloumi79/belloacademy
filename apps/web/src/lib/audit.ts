@@ -7,7 +7,7 @@
  */
 
 import type { Prisma } from "@/generated/prisma/client";
-import { prisma, prismaPlatform, type DbClient } from "@/lib/db/prisma";
+import { prisma, prismaPlatform, withTenant, type DbClient } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 
 export const AUDIT_ACTIONS = [
@@ -70,21 +70,34 @@ export type AuditInput = {
 /**
  * Écrit une entrée d'audit. Ne lève jamais d'exception : un échec de
  * journalisation ne doit pas interrompre l'opération métier.
+ *
+ * `audit_logs` est protégée par RLS : une entrée rattachée à une organisation
+ * doit être écrite dans un contexte de tenant (`withTenant`), sinon PostgreSQL
+ * refuse l'insertion. Les événements purement plateforme (sans organisation)
+ * sont acceptés hors contexte, la politique autorisant `organizationId IS NULL`.
  */
-export async function recordAudit(input: AuditInput, client: DbClient = prisma): Promise<void> {
+export async function recordAudit(input: AuditInput, client?: DbClient): Promise<void> {
+  const data = {
+    action: input.action,
+    organizationId: input.organizationId ?? null,
+    actorUserId: input.actorUserId ?? null,
+    entityType: input.entityType ?? null,
+    entityId: input.entityId ?? null,
+    metadata: input.metadata ?? {},
+    ip: input.ip ?? null,
+    userAgent: input.userAgent ?? null,
+  };
+
   try {
-    await client.auditLog.create({
-      data: {
-        action: input.action,
-        organizationId: input.organizationId ?? null,
-        actorUserId: input.actorUserId ?? null,
-        entityType: input.entityType ?? null,
-        entityId: input.entityId ?? null,
-        metadata: input.metadata ?? {},
-        ip: input.ip ?? null,
-        userAgent: input.userAgent ?? null,
-      },
-    });
+    if (client) {
+      await client.auditLog.create({ data });
+      return;
+    }
+    if (input.organizationId) {
+      await withTenant(input.organizationId, (tx) => tx.auditLog.create({ data }));
+      return;
+    }
+    await prismaPlatform.auditLog.create({ data });
   } catch (error) {
     logger.warn("Échec de l'écriture du journal d'audit", { action: input.action, error });
   }

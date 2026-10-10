@@ -9,7 +9,7 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import { CourseStatus, EnrollmentStatus } from "@/generated/prisma/enums";
-import { prisma, withTenant } from "@/lib/db/prisma";
+import { withTenant } from "@/lib/db/prisma";
 import { badRequest, conflict, forbidden, notFound, planLimitReached } from "@/lib/errors";
 import { recordAudit } from "@/lib/audit";
 import { notify } from "@/lib/notifications";
@@ -180,7 +180,6 @@ export async function getEnrollment(organizationId: string, courseId: string, us
 async function recomputeProgress(
   tx: Prisma.TransactionClient,
   enrollmentId: string,
-  organizationId: string,
 ): Promise<{ percent: number; completed: boolean }> {
   const enrollment = await tx.enrollment.findUnique({
     where: { id: enrollmentId },
@@ -255,7 +254,7 @@ export async function markLessonProgress(input: {
       },
     });
 
-    const progress = await recomputeProgress(tx, enrollment.id, input.organizationId);
+    const progress = await recomputeProgress(tx, enrollment.id);
     return { enrollmentId: enrollment.id, courseId: enrollment.courseId, ...progress };
   });
 

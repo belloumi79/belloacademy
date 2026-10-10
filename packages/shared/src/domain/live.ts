@@ -29,9 +29,18 @@ export function isValidJitsiRoomName(room: string): boolean {
   return JITSI_ROOM_PATTERN.test(room);
 }
 
+/**
+ * Construit un nom de salle conforme à `JITSI_ROOM_PATTERN` : partie lisible
+ * (dérivée de l'identifiant de formation) et partie aléatoire. La partie lisible
+ * est complétée si elle est trop courte, et le jeton est tronqué/ajusté pour
+ * rester dans les bornes attendues — un nom de salle produit ici est donc
+ * toujours valide, quel que soit l'identifiant fourni.
+ */
 export function buildJitsiRoomName(courseId: string, randomToken: string): string {
-  const coursePart = courseId.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20) || "session";
-  return `${coursePart}-${randomToken.toLowerCase()}`;
+  const coursePart =
+    courseId.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 20).padEnd(8, "0") || "session0";
+  const tokenPart = randomToken.replace(/[^a-z0-9]/gi, "").toLowerCase().slice(0, 32).padEnd(12, "0");
+  return `${coursePart}-${tokenPart}`;
 }
 
 /**

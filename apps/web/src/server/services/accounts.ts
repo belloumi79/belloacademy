@@ -20,7 +20,7 @@ import {
 
 import { env } from "@/env";
 import { recordAudit } from "@/lib/audit";
-import { hashPassword, verifyPassword } from "@/lib/auth/password";
+import { checkPasswordPolicy, hashPassword, verifyPassword } from "@/lib/auth/password";
 import {
   createSession,
   revokeAllUserSessions,
@@ -28,13 +28,25 @@ import {
 } from "@/lib/auth/session";
 import { createToken, hashToken, safeCompareHex } from "@/lib/auth/tokens";
 import { prisma, prismaPlatform } from "@/lib/db/prisma";
-import { badRequest, conflict, forbidden, notFound, unauthenticated } from "@/lib/errors";
+import { badRequest, conflict, forbidden, notFound, unauthenticated, validationError } from "@/lib/errors";
 import { enqueue } from "@/lib/jobs";
 import { logger } from "@/lib/logger";
 import { issueCsrfToken } from "@/lib/csrf";
 
 const MAX_FAILED_LOGINS = 8;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
+
+/**
+ * Contrôle de robustesse du mot de passe, appliqué côté service en plus de la
+ * validation du schéma : la politique reste vraie même si un appelant
+ * (script, tâche planifiée) contourne la couche HTTP.
+ */
+function assertPasswordPolicy(password: string): void {
+  const result = checkPasswordPolicy(password);
+  if (!result.ok) {
+    throw validationError(result.reasons.join(" "), { reasons: result.reasons });
+  }
+}
 
 export type RegisterInput = {
   email: string;
@@ -115,6 +127,7 @@ export async function register(input: RegisterInput): Promise<AuthenticatedUser>
     throw notFound("Organisation introuvable.");
   }
 
+  assertPasswordPolicy(input.password);
   const passwordHash = await hashPassword(input.password);
 
   const user = await prismaPlatform.user.create({
@@ -166,11 +179,17 @@ export async function register(input: RegisterInput): Promise<AuthenticatedUser>
 
 export type LoginResult = { user: AuthenticatedUser; sessionId: string };
 
-/** Connexion : verrouillage progressif, puis création de session + jeton CSRF. */
-export async function login(input: {
+/**
+ * Vérifie des identifiants : verrouillage progressif, coût constant sur un
+ * compte inexistant, remise à zéro des échecs en cas de succès.
+ *
+ * Séparé de `login()` (qui ouvre la session et pose les cookies) afin d'être
+ * testable sans contexte de requête HTTP.
+ */
+export async function authenticate(input: {
   email: string;
   password: string;
-}): Promise<LoginResult> {
+}): Promise<AuthenticatedUser> {
   const email = normalizeEmail(input.email);
   const user = await prismaPlatform.user.findUnique({
     where: { email },
@@ -226,6 +245,12 @@ export async function login(input: {
     data: { failedLogins: 0, lockedUntil: null, lastLoginAt: new Date() },
   });
 
+  return publicUser(user);
+}
+
+/** Connexion : authentification, puis création de session + jeton CSRF. */
+export async function login(input: { email: string; password: string }): Promise<LoginResult> {
+  const user = await authenticate(input);
   const session = await createSession(user.id);
   await issueCsrfToken();
 
@@ -237,7 +262,7 @@ export async function login(input: {
     metadata: { sessionId: session.session.id },
   });
 
-  return { user: publicUser(user), sessionId: session.session.id };
+  return { user, sessionId: session.session.id };
 }
 
 export async function logout(sessionId: string, userId: string): Promise<void> {
@@ -361,6 +386,7 @@ export async function resetPassword(input: { token: string; password: string }):
   const record = await consumeToken(input.token, "PASSWORD_RESET");
   if (!record.userId) throw badRequest("Lien invalide ou expiré.");
 
+  assertPasswordPolicy(input.password);
   const passwordHash = await hashPassword(input.password);
   await prismaPlatform.user.update({
     where: { id: record.userId },
@@ -392,6 +418,7 @@ export async function changePassword(input: {
   const valid = await verifyPassword(input.currentPassword, user.passwordHash);
   if (!valid) throw forbidden("Mot de passe actuel incorrect.");
 
+  assertPasswordPolicy(input.newPassword);
   const passwordHash = await hashPassword(input.newPassword);
   await prismaPlatform.user.update({ where: { id: user.id }, data: { passwordHash } });
 

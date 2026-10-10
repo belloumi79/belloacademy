@@ -10,7 +10,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { readCsrfToken } from "@/lib/http/client";
+import { apiFetch } from "@/lib/client/api";
 import { buttonClass } from "@/components/ui";
 
 export function LogoutButton() {
@@ -20,10 +20,7 @@ export function LogoutButton() {
   async function logout() {
     setPending(true);
     try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: { "x-csrf-token": readCsrfToken() ?? "" },
-      });
+      await apiFetch("/api/auth/logout", { method: "POST" });
       router.push("/");
       router.refresh();
     } finally {

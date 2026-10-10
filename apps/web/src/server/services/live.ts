@@ -18,7 +18,7 @@
 
 import { LIVE_SESSION_STATUSES, type LiveSessionStatus, type LiveParticipantRole } from "@belloacademy/shared";
 
-import { prisma, prismaPlatform, withTenant } from "@/lib/db/prisma";
+import { prismaPlatform, withTenant } from "@/lib/db/prisma";
 import { badRequest, conflict, forbidden, notFound } from "@/lib/errors";
 import { recordAudit } from "@/lib/audit";
 import { buildJoinDescriptor, generateRoomName, isJitsiConfigured, jitsiDomain } from "@/lib/jitsi";

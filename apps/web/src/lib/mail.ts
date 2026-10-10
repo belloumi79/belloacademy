@@ -85,7 +85,7 @@ export function renderTemplate(
 
   switch (template) {
     case "verify_address": {
-      const url = link("/verify-email", context.token);
+      const url = link("/verifier-email", context.token);
       return {
         subject: "Confirmez votre adresse e-mail",
         text: `${name},\n\nConfirmez votre adresse e-mail pour activer votre compte BelloAcademy :\n${url}\n\nCe lien expire dans 72 heures.`,
@@ -97,7 +97,7 @@ export function renderTemplate(
       };
     }
     case "reset_password": {
-      const url = link("/reset-password", context.token);
+      const url = link("/reinitialiser-mot-de-passe", context.token);
       return {
         subject: "Réinitialisation de votre mot de passe",
         text: `${name},\n\nVous avez demandé la réinitialisation de votre mot de passe :\n${url}\n\nCe lien expire dans une heure. Si vous n'êtes pas à l'origine de cette demande, ignorez ce message.`,
@@ -109,7 +109,7 @@ export function renderTemplate(
       };
     }
     case "organization_invite": {
-      const url = link("/invitations", context.token);
+      const url = `${appUrl}/inscription?invitation=${encodeURIComponent(String(context.token))}`;
       const organizationName = String(context.organizationName ?? "une organisation");
       return {
         subject: `Invitation à rejoindre ${organizationName}`,

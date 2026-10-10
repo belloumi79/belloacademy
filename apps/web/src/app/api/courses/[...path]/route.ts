@@ -2,11 +2,9 @@
 
 import { courseCreateSchema, courseFilterSchema, courseUpdateSchema, reorderSchema, sectionCreateSchema, sectionUpdateSchema, lessonCreateSchema, lessonUpdateSchema, categorySchema } from "@belloacademy/shared";
 
-import { requireAuth } from "@/lib/auth/authorization";
-import { jsonCreated, jsonOk, parseBody, route, searchParams } from "@/lib/http/api";
+import { jsonCreated, jsonOk, parseBody, searchParams } from "@/lib/http/api";
 import { createDispatcher } from "@/lib/http/dispatch";
 import { orgAccess, orgScope, publicOrganizationId } from "@/lib/http/tenant";
-import { forbidden } from "@/lib/errors";
 import {
   archiveCourse,
   createCategory,
@@ -271,7 +269,7 @@ const dispatch = createDispatcher([
     pattern: ":courseId/lessons/:lessonId",
     handler: async ({ request, params }) => {
       const scope = await orgScope(request, "course:update");
-      const { assetId: _ignoredAssetId, ...input } = await parseBody(request, lessonUpdateSchema);
+      const input = await parseBody(request, lessonUpdateSchema);
       const lesson = await updateLesson({
         organizationId: scope.organizationId,
         lessonId: params.lessonId ?? "",

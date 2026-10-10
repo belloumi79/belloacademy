@@ -8,7 +8,7 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import { CourseStatus, LessonType } from "@/generated/prisma/enums";
-import { prisma, prismaPlatform, withTenant } from "@/lib/db/prisma";
+import { prismaPlatform, withTenant } from "@/lib/db/prisma";
 import { badRequest, conflict, notFound } from "@/lib/errors";
 import { recordAudit } from "@/lib/audit";
 import { slugify } from "@belloacademy/shared";
@@ -110,7 +110,7 @@ export async function listCatalogCategories(organizationId?: string) {
 /** Fiche formation publique : programme + formateur, sans contenu réservé. */
 export async function getCourseForLearner(organizationId: string, slug: string, userId?: string | null) {
   const course = await prismaPlatform.course.findFirst({
-    where: { slug, status: CourseStatus.PUBLISHED },
+    where: { organizationId, slug, status: CourseStatus.PUBLISHED },
     select: {
       ...COURSE_CARD_SELECT,
       objectives: true,
@@ -155,6 +155,39 @@ export async function getCourseForLearner(organizationId: string, slug: string, 
   }
 
   return { course, enrollment };
+}
+
+/**
+ * Fiche d'une formation publiée, résolue par son slug public.
+ *
+ * Le slug n'est unique qu'au sein d'une organisation : on identifie d'abord
+ * l'organisation propriétaire, puis on réutilise la lecture « apprenant ».
+ */
+export async function getPublicCourseBySlug(slug: string, userId?: string | null) {
+  const owner = await prismaPlatform.course.findFirst({
+    where: { slug, status: CourseStatus.PUBLISHED },
+    select: { organizationId: true },
+    orderBy: { publishedAt: "desc" },
+  });
+  if (!owner) throw notFound("Formation introuvable.");
+  return getCourseForLearner(owner.organizationId, slug, userId);
+}
+
+/**
+ * Résout l'organisation propriétaire d'une formation publiée.
+ *
+ * Utilisé par les pages publiques : la fiche d'une formation est accessible sans
+ * session, mais toutes les lectures liées à l'apprenant (inscription, progression)
+ * restent filtrées par organisation via `withTenant`.
+ */
+export async function resolveCourseOwner(slug: string): Promise<{ courseId: string; organizationId: string }> {
+  const found = await prismaPlatform.course.findFirst({
+    where: { slug, status: CourseStatus.PUBLISHED },
+    orderBy: { publishedAt: "desc" },
+    select: { id: true, organizationId: true },
+  });
+  if (!found) throw notFound("Formation introuvable.");
+  return { courseId: found.id, organizationId: found.organizationId };
 }
 
 export async function getCourseById(organizationId: string, courseId: string) {
@@ -656,4 +689,70 @@ export async function countPublishedLessons(organizationId: string, courseId: st
   return withTenant(organizationId, (tx) =>
     tx.lesson.count({ where: { courseId, isPublished: true } }),
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ressources téléchargeables attachées à une leçon                            */
+/* -------------------------------------------------------------------------- */
+
+export type LessonResourceInput = {
+  organizationId: string;
+  lessonId: string;
+  assetId: string;
+  title: string;
+  actorUserId?: string;
+};
+
+/**
+ * Attache une ressource téléchargeable à une leçon.
+ *
+ * L'objet et la leçon doivent appartenir à la même organisation : sans ce
+ * contrôle, un formateur pourrait référencer le fichier privé d'un autre tenant
+ * et le rendre téléchargeable à ses propres apprenants.
+ */
+export async function createLessonResource(input: LessonResourceInput) {
+  return withTenant(input.organizationId, async (tx) => {
+    const lesson = await tx.lesson.findFirst({
+      where: { id: input.lessonId, organizationId: input.organizationId },
+      select: { id: true },
+    });
+    if (!lesson) throw notFound("Leçon introuvable.");
+
+    const asset = await tx.asset.findFirst({
+      where: { id: input.assetId, organizationId: input.organizationId },
+      select: { id: true },
+    });
+    if (!asset) throw badRequest("Le fichier indiqué n'appartient pas à cette organisation.");
+
+    const last = await tx.lessonResource.aggregate({
+      where: { lessonId: input.lessonId },
+      _max: { position: true },
+    });
+
+    return tx.lessonResource.create({
+      data: {
+        organizationId: input.organizationId,
+        lessonId: input.lessonId,
+        assetId: input.assetId,
+        title: input.title,
+        position: (last._max.position ?? 0) + 1,
+      },
+      select: { id: true, title: true, assetId: true, position: true },
+    });
+  });
+}
+
+export async function deleteLessonResource(input: {
+  organizationId: string;
+  resourceId: string;
+}): Promise<{ id: string }> {
+  return withTenant(input.organizationId, async (tx) => {
+    const resource = await tx.lessonResource.findFirst({
+      where: { id: input.resourceId, organizationId: input.organizationId },
+      select: { id: true },
+    });
+    if (!resource) throw notFound("Ressource introuvable.");
+    await tx.lessonResource.delete({ where: { id: resource.id } });
+    return { id: resource.id };
+  });
 }

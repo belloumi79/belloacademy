@@ -95,17 +95,45 @@ export function gradeAnswer(question: QuestionGradeInput, answer: QuestionAnswer
   }
 }
 
-/** Résultat global d'une tentative : score, note maximale et réussite. */
+/** Ramène un total de points à un pourcentage entier (0-100). */
+export function toPercent(rawScore: number, rawMaxScore: number): number {
+  if (rawMaxScore <= 0) return 0;
+  return Math.round((rawScore / rawMaxScore) * 100);
+}
+
+export type AttemptSummary = {
+  /** Pourcentage obtenu (0-100). C'est la valeur stockée et comparée aux seuils. */
+  score: number;
+  /** Barème de référence : toujours 100, pour que « score / maxScore » reste lisible. */
+  maxScore: number;
+  /** Points bruts obtenus, utiles à l'affichage détaillé. */
+  rawScore: number;
+  /** Total de points possible. */
+  rawMaxScore: number;
+  passed: boolean;
+  pendingManualGrading: boolean;
+};
+
+/**
+ * Résultat global d'une tentative.
+ *
+ * `passingScore` est un pourcentage (défaut 70 côté base), donc le score est
+ * normalisé en pourcentage : comparer des points bruts à un seuil en pourcentage
+ * rendrait le seuil dépendant du nombre de questions.
+ */
 export function summarizeAttempt(
   results: QuestionGradeResult[],
-  maxScore: number,
+  rawMaxScore: number,
   passingScore: number,
-): { score: number; maxScore: number; passed: boolean; pendingManualGrading: boolean } {
-  const score = results.reduce((total, result) => total + result.pointsAwarded, 0);
+): AttemptSummary {
+  const rawScore = results.reduce((total, result) => total + result.pointsAwarded, 0);
   const pendingManualGrading = results.some((result) => result.requiresManualGrading);
+  const score = toPercent(rawScore, rawMaxScore);
   return {
     score,
-    maxScore,
+    maxScore: 100,
+    rawScore,
+    rawMaxScore,
     passed: !pendingManualGrading && score >= passingScore,
     pendingManualGrading,
   };

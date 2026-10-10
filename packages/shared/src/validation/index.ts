@@ -31,12 +31,20 @@ export const emailSchema = z
   .transform((value) => value.trim().toLowerCase());
 
 /** Mot de passe : 10 caractères minimum, au moins une lettre et un chiffre. */
+/**
+ * Politique de mot de passe (identique côté service : `checkPasswordPolicy`).
+ * Trois catégories de caractères au minimum, pour rester prévisible tout en
+ * bloquant les mots de passe triviaux.
+ */
 export const passwordSchema = z
   .string()
   .min(10, "Le mot de passe doit contenir au moins 10 caractères.")
   .max(200, "Le mot de passe est trop long.")
-  .refine((value) => /[A-Za-zÀ-ÿ]/.test(value), "Le mot de passe doit contenir au moins une lettre.")
-  .refine((value) => /\d/.test(value), "Le mot de passe doit contenir au moins un chiffre.");
+  .refine(
+    (value) => [/[a-z]/, /[A-Z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((pattern) => pattern.test(value)).length >= 3,
+    "Le mot de passe doit mélanger au moins trois types de caractères (minuscules, majuscules, chiffres, symboles).",
+  )
+  .refine((value) => !/^(.)\1+$/.test(value), "Le mot de passe ne peut pas être une répétition d'un seul caractère.");
 
 export const nameSchema = z.string().trim().min(2, "Le nom est trop court.").max(120, "Le nom est trop long.");
 

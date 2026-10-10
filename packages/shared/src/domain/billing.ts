@@ -225,7 +225,13 @@ export function parseLimits(value: unknown): PlanLimits {
       limits[metric] = null;
       continue;
     }
-    if (typeof raw === "number" && Number.isFinite(raw)) limits[metric] = raw;
+    // Les limites proviennent d'une colonne JSON : une chaîne numérique
+    // (« 120 ») doit être interprétée comme une limite, jamais ignorée, sinon
+    // une valeur mal saisie deviendrait silencieusement « illimitée ».
+    const numeric =
+      typeof raw === "number" ? raw : typeof raw === "string" && raw.trim() !== "" ? Number(raw) : Number.NaN;
+    if (!Number.isFinite(numeric) || !Number.isInteger(numeric) || numeric < 0) continue;
+    limits[metric] = numeric;
   }
   return limits;
 }

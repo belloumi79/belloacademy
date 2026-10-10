@@ -17,7 +17,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, normalize, resolve, sep } from "node:path";
 
 import { env } from "@/env";
-import { AppError, badRequest, internal } from "@/lib/errors";
+import { badRequest, internal } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import {
   buildObjectKey,
