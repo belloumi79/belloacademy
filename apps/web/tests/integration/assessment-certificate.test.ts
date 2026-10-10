@@ -192,11 +192,6 @@ describe("quiz et correction automatique", () => {
       quizId: quiz.id,
       userId: learner.id,
     });
-    const view = await getQuizForLearner({
-      organizationId: tenant.organization.id,
-      quizId: quiz.id,
-      userId: learner.id,
-    });
     const key = await answerKey(quiz.id);
     await submitAttempt({
       organizationId: tenant.organization.id,

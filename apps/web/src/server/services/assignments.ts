@@ -245,6 +245,12 @@ export async function getAssignmentForLearner(input: {
   return {
     ...assignment,
     submission,
+    /**
+     * L'échéance est calculée ici, une fois : les pages ne doivent pas lire
+     * l'horloge pendant le rendu (résultat instable entre deux rendus) et les
+     * deux vues apprenant s'appuient ainsi sur la même règle.
+     */
+    isOverdue: assignment.dueAt !== null && assignment.dueAt.getTime() <= Date.now(),
     canSubmit:
       assignment.isPublished &&
       (!assignment.dueAt || assignment.allowLate || assignment.dueAt.getTime() > Date.now()) &&
@@ -497,7 +503,7 @@ export async function listMyAssignments(input: { organizationId: string; userId:
   const courseIds = enrollments.map((enrollment) => enrollment.courseId);
   if (courseIds.length === 0) return [];
 
-  return withTenant(input.organizationId, (tx) =>
+  const assignments = await withTenant(input.organizationId, (tx) =>
     tx.assignment.findMany({
       where: { courseId: { in: courseIds }, isPublished: true, organizationId: input.organizationId },
       orderBy: [{ dueAt: "asc" }, { createdAt: "desc" }],
@@ -505,6 +511,7 @@ export async function listMyAssignments(input: { organizationId: string; userId:
         id: true,
         title: true,
         dueAt: true,
+        allowLate: true,
         maxScore: true,
         course: { select: { id: true, title: true } },
         submissions: {
@@ -515,4 +522,17 @@ export async function listMyAssignments(input: { organizationId: string; userId:
       },
     }),
   );
+
+  // Le retard est calculé ici : les pages n'ont ainsi jamais à lire l'horloge
+  // pendant leur rendu, et la règle reste identique partout.
+  const now = Date.now();
+  return assignments.map((assignment) => {
+    const submission = assignment.submissions[0] ?? null;
+    return {
+      ...assignment,
+      submission,
+      isOverdue: Boolean(assignment.dueAt && assignment.dueAt.getTime() < now),
+      isLateSubmission: Boolean(submission?.submittedAt && assignment.dueAt && submission.submittedAt > assignment.dueAt),
+    };
+  });
 }

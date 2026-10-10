@@ -7,7 +7,7 @@
  */
 
 import type { Prisma } from "@/generated/prisma/client";
-import { prisma, prismaPlatform, withTenant, type DbClient } from "@/lib/db/prisma";
+import { prismaPlatform, withTenant, type DbClient } from "@/lib/db/prisma";
 import { logger } from "@/lib/logger";
 
 export const AUDIT_ACTIONS = [

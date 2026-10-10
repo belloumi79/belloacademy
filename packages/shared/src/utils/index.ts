@@ -114,6 +114,17 @@ export function formatDuration(seconds: number): string {
   if (minutes === 0) return `${hours} h`;
   return `${hours} h ${minutes} min`;
 }
+/** Taille lisible, en unités binaires (Ko, Mo, Go). */
+export function formatBytes(bytes: number, locale = "fr-FR"): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 o";
+  const units = ["o", "Ko", "Mo", "Go"] as const;
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / 1024 ** exponent;
+  const formatted = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: exponent === 0 ? 0 : 1,
+  }).format(value);
+  return `${formatted} ${units[exponent]}`;
+}
 
 export function percent(part: number, total: number): number {
   if (!total || total <= 0) return 0;

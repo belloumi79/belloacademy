@@ -546,3 +546,105 @@ export async function learnerOverview(organizationId: string, userId: string): P
     })),
   };
 }
+
+/* ------------------------------------------------- Corrections en attente */
+
+export type PendingGrading = {
+  submissions: {
+    id: string;
+    submittedAt: Date | null;
+    learnerName: string;
+    assignmentId: string;
+    assignmentTitle: string;
+    courseTitle: string;
+    maxScore: number;
+  }[];
+  quizAnswers: {
+    id: string;
+    attemptId: string;
+    answerText: string | null;
+    points: number;
+    questionPrompt: string;
+    learnerName: string;
+    quizTitle: string;
+    courseTitle: string;
+  }[];
+};
+
+/**
+ * Travail de correction restant pour les formations de cet utilisateur.
+ * Deux sources distinctes : les dépôts de devoirs et les réponses de quiz
+ * ouvertes (réponse courte) qui exigent une appréciation humaine.
+ */
+export async function listPendingGrading(
+  organizationId: string,
+  instructorId: string,
+): Promise<PendingGrading> {
+  const [submissions, quizAnswers] = await Promise.all([
+    withTenant(organizationId, (tx) =>
+      tx.assignmentSubmission.findMany({
+        where: {
+          organizationId,
+          status: "SUBMITTED",
+          assignment: { course: { instructorId, organizationId } },
+        },
+        orderBy: { submittedAt: "asc" },
+        take: 50,
+        select: {
+          id: true,
+          submittedAt: true,
+          user: { select: { name: true } },
+          assignment: {
+            select: { id: true, title: true, maxScore: true, course: { select: { title: true } } },
+          },
+        },
+      }),
+    ),
+    withTenant(organizationId, (tx) =>
+      tx.quizAnswer.findMany({
+        where: {
+          organizationId,
+          isCorrect: null,
+          attempt: { status: "SUBMITTED", quiz: { course: { instructorId, organizationId } } },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 50,
+        select: {
+          id: true,
+          attemptId: true,
+          answerText: true,
+          question: { select: { prompt: true, points: true } },
+          attempt: {
+            select: {
+              user: { select: { name: true } },
+              quiz: { select: { title: true, course: { select: { title: true } } } },
+            },
+          },
+        },
+      }),
+    ),
+  ]);
+
+  return {
+    submissions: submissions.map((submission) => ({
+      id: submission.id,
+      submittedAt: submission.submittedAt,
+      learnerName: submission.user.name,
+      assignmentId: submission.assignment.id,
+      assignmentTitle: submission.assignment.title,
+      courseTitle: submission.assignment.course.title,
+      maxScore: submission.assignment.maxScore,
+    })),
+    quizAnswers: quizAnswers.map((answer) => ({
+      id: answer.id,
+      attemptId: answer.attemptId,
+      answerText: answer.answerText,
+      points: answer.question.points,
+      questionPrompt: answer.question.prompt,
+      learnerName: answer.attempt.user.name,
+      quizTitle: answer.attempt.quiz.title,
+      courseTitle: answer.attempt.quiz.course.title,
+    })),
+  };
+}
+

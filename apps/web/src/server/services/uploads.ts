@@ -38,6 +38,12 @@ export type RequestUploadInput = {
   sizeBytes: number;
   category: StorageCategory;
   visibility?: "PRIVATE" | "PUBLIC";
+  /**
+   * Préfixe de l'URL de dépôt local. Permet aux apprenants de déposer leurs
+   * devoirs via une route ouverte à leurs permissions, sans élargir celles de
+   * la route générale `/api/uploads`.
+   */
+  localUploadBasePath?: string;
 };
 
 export type UploadTicket = {
@@ -92,7 +98,7 @@ export async function requestUpload(input: RequestUploadInput): Promise<UploadTi
   );
 
   const presigned = await storage.presignPut(key, input.mimeType, 900);
-  const uploadUrl = presigned ?? `/api/uploads/put/${assetId}`;
+  const uploadUrl = presigned ?? `${input.localUploadBasePath ?? "/api/uploads/put"}/${assetId}`;
 
   return {
     assetId,
@@ -119,6 +125,13 @@ export async function storeUploadedBody(input: {
     }),
   );
   if (!asset) throw notFound("Fichier introuvable.");
+
+  // Un ticket n'est honoré que par celui qui l'a demandé : sans ce contrôle,
+  // n'importe quel membre disposant de la permission d'écriture pourrait
+  // remplacer le contenu d'un objet en devinant son identifiant.
+  if (asset.uploaderId !== input.userId) {
+    throw forbidden("Ce dépôt de fichier ne vous appartient pas.");
+  }
 
   // La validation porte sur le nom d'origine : la clé d'objet contient des
   // séparateurs de dossiers et échouerait sur le contrôle de nom de fichier.

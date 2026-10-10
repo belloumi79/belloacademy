@@ -160,6 +160,14 @@ export const memberUpdateSchema = z.object({
 });
 export type MemberUpdateInput = z.infer<typeof memberUpdateSchema>;
 
+export const profileUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  locale: localeSchema.optional(),
+  timezone: z.string().trim().min(3).max(64).optional(),
+  avatarUrl: urlSchema.nullable().optional(),
+});
+export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;
+
 // -----------------------------------------------------------------------------
 // Formations
 // -----------------------------------------------------------------------------

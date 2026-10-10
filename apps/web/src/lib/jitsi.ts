@@ -56,8 +56,8 @@ export function generateRoomName(courseId: string): string {
   const prefix = env().JITSI_ROOM_PREFIX.replace(/[^a-z0-9]/gi, "").toLowerCase() || "belloacademy";
   const suffix = generateRoomSuffix();
   const slug = courseId.replace(/[^a-z0-9]/gi, "").toLowerCase();
-  const readable = `${prefix}${slug}`.slice(0, 20).padEnd(8, suffix);
-  const room = `${readable}-${suffix}`;
+  // Une seule implémentation du format de salle : celle du domaine partagé.
+  const room = buildJitsiRoomName(`${prefix}${slug}`, suffix);
   if (!isValidJitsiRoomName(room)) {
     throw internal("Nom de salle Jitsi invalide.");
   }

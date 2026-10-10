@@ -144,5 +144,4 @@ const dispatch = createDispatcher([
 ]);
 export const GET = dispatch.GET;
 export const POST = dispatch.POST;
-/** Réponse explicite pour les méthodes non exposées sur cette ressource. */
 export const PATCH = unsupportedMethod("Méthode non supportée sur /api/auth.");

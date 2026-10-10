@@ -378,3 +378,82 @@ export async function scheduleTrialExpiryCheck(organizationId: string, trialEnds
 }
 
 export { prisma };
+
+export type PlatformOrganizationRow = {
+  id: string;
+  slug: string;
+  name: string;
+  country: string;
+  createdAt: Date;
+  deletedAt: Date | null;
+  planCode: string | null;
+  planName: string | null;
+  members: number;
+  courses: number;
+  enrollments: number;
+};
+
+/**
+ * Toutes les organisations de la plateforme — réservé au superadministrateur.
+ *
+ * Les compteurs sont obtenus en deux requêtes groupées plutôt qu'en bouclant
+ * organisation par organisation, pour éviter le coût en N+1 dès que la
+ * plateforme compte un nombre significatif de tenants.
+ */
+export async function listAllOrganizations(limit = 100): Promise<PlatformOrganizationRow[]> {
+  const organizations = await prismaPlatform.organization.findMany({
+    orderBy: { createdAt: "desc" },
+    take: Math.min(Math.max(limit, 1), 500),
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      country: true,
+      createdAt: true,
+      deletedAt: true,
+      plan: { select: { code: true, name: true } },
+    },
+  });
+
+  const ids = organizations.map((organization) => organization.id);
+  if (ids.length === 0) return [];
+
+  const [memberCounts, courseCounts, enrollmentCounts] = await Promise.all([
+    prismaPlatform.membership.groupBy({
+      by: ["organizationId"],
+      where: { organizationId: { in: ids }, status: { in: ["ACTIVE", "INVITED"] } },
+      _count: { _all: true },
+    }),
+    prismaPlatform.course.groupBy({
+      by: ["organizationId"],
+      where: { organizationId: { in: ids } },
+      _count: { _all: true },
+    }),
+    prismaPlatform.enrollment.groupBy({
+      by: ["organizationId"],
+      where: { organizationId: { in: ids } },
+      _count: { _all: true },
+    }),
+  ]);
+
+  const toMap = (rows: { organizationId: string; _count: { _all: number } }[]) =>
+    new Map(rows.map((row) => [row.organizationId, row._count._all]));
+
+  const members = toMap(memberCounts);
+  const courses = toMap(courseCounts);
+  const enrollments = toMap(enrollmentCounts);
+
+  return organizations.map((organization) => ({
+    id: organization.id,
+    slug: organization.slug,
+    name: organization.name,
+    country: organization.country,
+    createdAt: organization.createdAt,
+    deletedAt: organization.deletedAt,
+    planCode: organization.plan?.code ?? null,
+    planName: organization.plan?.name ?? null,
+    members: members.get(organization.id) ?? 0,
+    courses: courses.get(organization.id) ?? 0,
+    enrollments: enrollments.get(organization.id) ?? 0,
+  }));
+}
