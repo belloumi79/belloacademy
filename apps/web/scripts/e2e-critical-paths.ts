@@ -221,6 +221,64 @@ async function main(): Promise<void> {
   const me = await owner.request("/api/me");
   assert("le profil du titulaire est lisible", me.status === 200, `statut ${me.status}`);
 
+  // 5 bis. Chaîne de contenu : création, programme, publication.
+  const courseTitle = `Formation E2E ${RUN_ID}`;
+  const createdCourse = await owner.request("/api/courses", {
+    method: "POST",
+    body: {
+      title: courseTitle,
+      description: "Formation créée par le parcours de vérification.",
+      level: "BEGINNER",
+      language: "fr",
+      priceCents: 0,
+    },
+  });
+  const courseBody = createdCourse.json as { course?: { id?: string; slug?: string } } | null;
+  const courseId = courseBody?.course?.id ?? "";
+  const courseSlug = courseBody?.course?.slug ?? "";
+  assert("un formateur peut créer une formation", createdCourse.status === 201 && Boolean(courseId), `statut ${createdCourse.status}`);
+
+  const createdSection = await owner.request(`/api/courses/${courseId}/sections`, {
+    method: "POST",
+    body: { title: "Section de vérification" },
+  });
+  const sectionId = (createdSection.json as { section?: { id?: string } } | null)?.section?.id ?? "";
+  assert("une section peut être ajoutée", createdSection.status === 201 && Boolean(sectionId), `statut ${createdSection.status}`);
+
+  const createdLesson = await owner.request(`/api/courses/${courseId}/lessons`, {
+    method: "POST",
+    body: { sectionId, title: "Leçon de vérification", type: "TEXT", contentMd: "Contenu de vérification." },
+  });
+  const lessonId = (createdLesson.json as { lesson?: { id?: string } } | null)?.lesson?.id ?? "";
+  assert("une leçon peut être ajoutée", createdLesson.status === 201 && Boolean(lessonId), `statut ${createdLesson.status}`);
+
+  const publishedLesson = await owner.request(`/api/courses/${courseId}/lessons/${lessonId}`, {
+    method: "PATCH",
+    body: { isPublished: true },
+  });
+  assert("une leçon peut être publiée", publishedLesson.status === 200, `statut ${publishedLesson.status}`);
+
+  const publishedCourse = await owner.request(`/api/courses/${courseId}/publish`, { method: "POST", body: {} });
+  assert(
+    "une formation dotée d'une leçon publiée peut être publiée",
+    publishedCourse.status === 200,
+    `statut ${publishedCourse.status}`,
+  );
+
+  // Recherche ciblée : le catalogue plafonne `pageSize` à 48, une recherche par
+  // titre unique évite de dépendre du nombre total de formations en base.
+  const catalogAfterPublish = await anonymous.request(
+    `/api/courses?pageSize=48&search=${encodeURIComponent(courseTitle)}`,
+  );
+  const catalogSlugs = ((catalogAfterPublish.json as { items?: { slug?: string }[] } | null)?.items ?? []).map(
+    (entry) => entry.slug,
+  );
+  assert(
+    "la formation publiée apparaît au catalogue public",
+    catalogAfterPublish.status === 200 && catalogSlugs.includes(courseSlug),
+    `statut ${catalogAfterPublish.status}`,
+  );
+
   // 6. La CSRF est bien exigée : même session, sans en-tête CSRF.
   const noCsrf = await owner.request("/api/auth/logout", {
     method: "POST",

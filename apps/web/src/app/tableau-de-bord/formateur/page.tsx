@@ -3,8 +3,8 @@ import Link from "next/link";
 
 import { formatDateTime, percent } from "@belloacademy/shared";
 
-import { Badge, Card, CardBody, CardHeader, EmptyState, Progress, Stat, Table } from "@/components/ui";
-import { requirePagePermission } from "@/server/page-context";
+import { Badge, Card, CardBody, CardHeader, EmptyState, Progress, Stat, Table } from "@/components/ui";import { CourseCreateForm } from "@/components/instructor/course-create-form";
+import { can, requirePagePermission } from "@/server/page-context";
 import { instructorOverview } from "@/server/services/dashboards";
 import { listInstructorCourses } from "@/server/services/courses";
 
@@ -41,10 +41,12 @@ export default async function InstructorPage() {
         <Stat label="Corrections en attente" value={overview.pendingSubmissions.length} />
       </div>
 
+      <CourseCreateForm canCreate={can(page, "course:create")} />
+
       {courses.length === 0 ? (
         <EmptyState
           title="Aucune formation ne vous est rattachée"
-          description="Une formation vous est attribuée par un administrateur d'organisation."
+          description="Créez votre première formation avec le formulaire ci-dessus."
         />
       ) : (
         <Card>
@@ -58,7 +60,7 @@ export default async function InstructorPage() {
                   <tr key={course.id} className="border-t border-ink-200">
                     <td className="px-4 py-3">
                       <Link
-                        href={`/tableau-de-bord/formations/${course.slug}`}
+                        href={`/tableau-de-bord/formateur/${course.id}`}
                         className="font-medium text-ink-900 hover:text-brand-700"
                       >
                         {course.title}
