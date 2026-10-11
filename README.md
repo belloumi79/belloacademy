@@ -54,6 +54,12 @@ leçons (vidéo, document, texte, lien, fichier, session live), ressources
 téléchargeables, progression individuelle reprise là où l'apprenant s'est
 arrêté, statuts brouillon / publié / archivé.
 
+L'espace formateur (`/tableau-de-bord/formateur`) permet de créer une formation
+puis de l'éditer intégralement : métadonnées, objectifs, prérequis, prix,
+réglage du certificat, sections et leçons (ajout, renommage, réordonnancement,
+suppression, publication). Un formateur n'accède qu'à ses propres formations ;
+l'API applique la même règle, indépendamment de l'interface.
+
 ### Classes virtuelles
 
 Sessions Jitsi Meet planifiées et rattachées à une formation : dates, durées,
@@ -414,7 +420,7 @@ produit jamais de double facturation. Voir `docs/deployment.md`.
 | Unitaires (paquet partagé) | `pnpm --filter @belloacademy/shared test` | 92 tests | Domaine pur : correction, progression, limites, RLS, stockage |
 | Unitaires (application) | `pnpm --filter @belloacademy/web test:unit` | 42 tests | Domaine, validation, utilitaires |
 | Intégration | `pnpm test:integration` | 59 tests, 7 fichiers | Parcours réels sur PostgreSQL |
-| Bout en bout | `pnpm test:e2e` | 14 vérifications | HTTP réel : sessions, CSRF, statuts, isolation |
+| Bout en bout | `pnpm test:e2e` | 20 vérifications | HTTP réel : sessions, CSRF, statuts, isolation, cycle de publication |
 | Types | `pnpm typecheck` | 2 paquets | Aucune erreur |
 | Lint | `pnpm lint` | — | Aucune erreur |
 
@@ -425,7 +431,8 @@ produit jamais de double facturation. Voir `docs/deployment.md`.
 | Création de compte et connexion | `auth-flow.test.ts`, e2e |
 | Rôles et permissions appliqués | `auth-flow.test.ts`, e2e |
 | Création d'organisation par un administrateur | `rls-isolation.test.ts` |
-| Formation créée et publiée par un formateur | `enrollment-progress.test.ts` |
+| Formation créée et publiée par un formateur | `enrollment-progress.test.ts`, e2e (création → section → leçon → publication → catalogue) |
+| Éditeur de formation réservé au formateur titulaire | `course-editor.tsx`, `page.tsx` (404 pour une formation d'autrui) |
 | Inscription et suivi d'une formation autorisée | `enrollment-progress.test.ts` |
 | Progression enregistrée et restaurée | `enrollment-progress.test.ts` |
 | Session Jitsi planifiée et rejointe selon les droits | `live-session.test.ts` |
