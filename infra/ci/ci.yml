@@ -1,0 +1,225 @@
+name: CI
+
+# Vérifications exécutées sur chaque poussée et chaque pull request :
+#   1. qualité statique (types, lint) ;
+#   2. tests unitaires (logique de domaine, sans base) ;
+#   3. tests d'intégration sur une base PostgreSQL réelle, avec les rôles
+#      applicatifs et les politiques RLS effectivement appliqués ;
+#   4. build de production Next.js ;
+#   5. validation de la configuration Docker Compose (sans construire l'image).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Valeurs de test uniquement : aucun secret réel n'est utilisé en CI.
+  AUTH_SECRET: ci_secret_for_build_and_tests_at_least_32_chars
+  NODE_ENV: test
+
+jobs:
+  quality:
+    name: Types, lint et tests unitaires
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Générer le client Prisma
+        run: pnpm db:generate
+
+      - name: Vérification des types
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Tests unitaires
+        run: pnpm test
+
+  integration:
+    name: Tests d'intégration (PostgreSQL + RLS)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      # Rôles et bases créés par infra/scripts/dev-db.sh
+      OWNER_PASSWORD: belloacademy_owner_dev
+      APP_PASSWORD: belloacademy_app_dev
+      PLATFORM_PASSWORD: belloacademy_platform_dev
+
+      DATABASE_URL: postgresql://belloacademy_app:belloacademy_app_dev@127.0.0.1:5432/belloacademy
+      DATABASE_PLATFORM_URL: postgresql://belloacademy_platform:belloacademy_platform_dev@127.0.0.1:5432/belloacademy
+      MIGRATE_DATABASE_URL: postgresql://belloacademy_owner:belloacademy_owner_dev@127.0.0.1:5432/belloacademy
+      SHADOW_DATABASE_URL: postgresql://belloacademy_owner:belloacademy_owner_dev@127.0.0.1:5432/belloacademy_shadow
+
+      TEST_DATABASE_URL: postgresql://belloacademy_app:belloacademy_app_dev@127.0.0.1:5432/belloacademy_test
+      TEST_PLATFORM_DATABASE_URL: postgresql://belloacademy_platform:belloacademy_platform_dev@127.0.0.1:5432/belloacademy_test
+      TEST_MIGRATE_DATABASE_URL: postgresql://belloacademy_owner:belloacademy_owner_dev@127.0.0.1:5432/belloacademy_test
+      TEST_SHADOW_DATABASE_URL: postgresql://belloacademy_owner:belloacademy_owner_dev@127.0.0.1:5432/belloacademy_test_shadow
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Créer les rôles et les bases PostgreSQL
+        run: bash infra/scripts/dev-db.sh
+
+      - name: Générer le client Prisma
+        run: pnpm db:generate
+
+      - name: Tests d'intégration
+        run: pnpm test:integration
+
+  build:
+    name: Build de production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.3
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Next.js
+        env:
+          # `next build` n'exécute aucune route : ces valeurs ne servent qu'à
+          # satisfaire la validation de l'environnement.
+          DATABASE_URL: postgresql://build:build@127.0.0.1:5432/build
+          DATABASE_PLATFORM_URL: postgresql://build:build@127.0.0.1:5432/build
+          MIGRATE_DATABASE_URL: postgresql://build:build@127.0.0.1:5432/build
+        run: pnpm build
+
+  compose:
+    name: Validation Docker Compose
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Valider les fichiers Compose (tous profils)
+        env:
+          AUTH_SECRET: ci_secret_for_compose_validation_at_least_32
+          POSTGRES_SUPERUSER_PASSWORD: ci_validation_superuser_password
+          S3_ACCESS_KEY_ID: ci_validation_access_key
+          S3_SECRET_ACCESS_KEY: ci_validation_secret_key
+        run: |
+          docker compose config --quiet
+          docker compose --profile proxy config --quiet
+          docker compose --profile proxy --profile jitsi config --quiet
+
+  docker-smoke:
+    name: Démarrage réel de l'image (migrations + sonde)
+    runs-on: ubuntu-latest
+    needs: [build, compose]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construire l'image de production
+        run: docker build -f apps/web/Dockerfile -t belloacademy:ci .
+
+      - name: Démarrer PostgreSQL
+        run: |
+          docker network create belloacademy-ci
+          docker run -d --name pg --network belloacademy-ci \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            -e POSTGRES_DB=belloacademy \
+            postgres:17-alpine
+
+          for i in $(seq 1 30); do
+            if docker exec pg pg_isready -U postgres >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          docker exec pg pg_isready -U postgres
+
+      - name: Démarrer l'application (migrations au démarrage)
+        run: |
+          docker run -d --name app --network belloacademy-ci -p 3000:3000 \
+            -e NODE_ENV=production \
+            -e AUTH_SECRET=ci_smoke_test_secret_at_least_32_characters \
+            -e DATABASE_URL=postgresql://postgres:postgres@pg:5432/belloacademy \
+            -e DATABASE_PLATFORM_URL=postgresql://postgres:postgres@pg:5432/belloacademy \
+            -e MIGRATE_DATABASE_URL=postgresql://postgres:postgres@pg:5432/belloacademy \
+            -e JOBS_ENABLED=false \
+            -e STORAGE_DRIVER=local \
+            -e RUN_MIGRATIONS_ON_START=true \
+            -e RUN_RLS_ON_START=false \
+            belloacademy:ci
+
+      - name: Attendre la sonde de disponibilité
+        run: |
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:3000/api/health >/dev/null 2>&1; then
+              echo "Sonde disponible."
+              curl -fsS http://127.0.0.1:3000/api/health
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::La sonde /api/health n'a jamais répondu. Journaux du conteneur :"
+          docker logs app
+          exit 1
+
+      - name: Vérifier que les migrations ont bien été appliquées
+        run: |
+          count="$(docker exec pg psql -U postgres -d belloacademy -Atc \
+            "SELECT count(*) FROM information_schema.tables WHERE table_schema='public'")"
+          echo "Tables publiques : ${count}"
+          test "${count}" -gt 20
+
+      - name: Journaux en cas d'échec
+        if: failure()
+        run: docker logs app || true

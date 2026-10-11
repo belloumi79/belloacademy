@@ -292,12 +292,18 @@ belloacademy/
 ├── infra/
 │   ├── sql/                          init-db.sql, rls.sql, privilèges
 │   ├── scripts/                      dev-db.sh, docker-init-db.sh
+│   ├── ci/ci.yml                     Définition du pipeline d'intégration continue
 │   ├── Caddyfile                     Reverse proxy + TLS
 │   └── Caddyfile.jitsi               Variante avec Jitsi auto-hébergé
 ├── docker-compose.yml                Pile complète (profils proxy et jitsi)
-├── .github/workflows/ci.yml          Intégration continue
 └── docs/                             Documentation technique
 ```
+
+> Le pipeline d'intégration continue est versionné dans `infra/ci/ci.yml`. Pour
+> l'activer, copiez-le vers `.github/workflows/ci.yml` (voir
+> [Activer l'intégration continue](docs/deployment.md#11-activer-lintégration-continue)).
+> Le jeton utilisé pour pousser le code n'a pas la portée `workflow` requise par
+> GitHub pour écrire lui-même dans `.github/workflows/`.
 
 ### Répartition des responsabilités
 

@@ -413,3 +413,45 @@ créerait une boucle infinie.
 - [ ] `RATE_LIMIT_ENABLED=true`, `TRUST_PROXY=true`
 - [ ] Politique de conservation des données documentée
 - [ ] Jitsi : `JITSI_REQUIRE_JWT=true` et secrets générés (voir [`jitsi.md`](jitsi.md))
+
+## 11. Activer l'intégration continue
+
+Le pipeline est versionné dans `infra/ci/ci.yml` et non directement dans
+`.github/workflows/`, car le jeton utilisé pour pousser le code ne dispose pas de
+la portée `workflow` exigée par GitHub pour écrire dans ce répertoire. Le fichier
+est donc prêt à l'emploi mais doit être activé une fois, manuellement.
+
+Depuis un poste disposant de vos identifiants GitHub :
+
+```bash
+mkdir -p .github/workflows
+git mv infra/ci/ci.yml .github/workflows/ci.yml
+git commit -m "Activation de l'intégration continue"
+git push
+```
+
+Si vous préférez le faire depuis l'interface GitHub : ouvrez `infra/ci/ci.yml`,
+copiez son contenu dans un nouveau fichier `.github/workflows/ci.yml`, puis
+validez le commit sur `main`. GitHub n'accepte un nouveau fichier de workflow que
+via une interface authentifiée disposant de la portée `workflow`.
+
+### Jobs exécutés
+
+| Job | Ce qu'il vérifie |
+| --- | --- |
+| `quality` | `pnpm typecheck`, `pnpm lint`, puis les tests unitaires |
+| `integration` | Tests d'intégration sur un service PostgreSQL réel, avec les rôles et politiques RLS (isolation multi-tenant incluse) |
+| `build` | `pnpm build` sur le monorepo |
+| `compose` | Validation de `docker-compose.yml` sur tous les profils (`docker compose config`) |
+| `docker-smoke` | Démarrage de l'image réelle, migrations, puis sonde `/api/health` |
+
+Le job `docker-smoke` construit l'image de production, démarre un PostgreSQL
+jetable, applique les migrations et interroge la sonde de disponibilité. C'est la
+vérification la plus proche de la production : si elle passe, l'image est
+réellement démarrable.
+
+### Secrets de CI
+
+Aucun secret n'est nécessaire : les jobs génèrent leurs propres valeurs
+éphémères (`AUTH_SECRET`, mots de passe) et le stockage bascule en pilote local.
+N'ajoutez pas de secrets de production dans les variables du dépôt.
