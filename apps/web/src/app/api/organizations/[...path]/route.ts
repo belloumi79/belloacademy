@@ -5,7 +5,7 @@ import { memberInviteSchema, memberUpdateSchema, organizationCreateSchema, organ
 import { requireAuth, requireSuperAdmin } from "@/lib/auth/authorization";
 import { prismaPlatform } from "@/lib/db/prisma";
 import { jsonCreated, jsonOk, parseBody, searchParams } from "@/lib/http/api";
-import { orgScope } from "@/lib/http/tenant";
+import { orgScope, orgScopeFor } from "@/lib/http/tenant";
 import { listAuditLogs } from "@/lib/audit";
 import { notFound } from "@/lib/errors";
 import {
@@ -105,8 +105,7 @@ const dispatch = createDispatcher([
     method: "PATCH",
     pattern: ":organizationId",
     handler: async ({ request, params }) => {
-      const scope = await orgScope(request, "org:update");
-      const organizationId = params.organizationId ?? scope.organizationId;
+      const { organizationId } = await orgScopeFor(params.organizationId, "org:update");
       const input = await parseBody(request, organizationUpdateSchema);
       const organization = await updateOrganization(organizationId, input);
       return jsonOk({ organization });
@@ -116,17 +115,17 @@ const dispatch = createDispatcher([
     method: "GET",
     pattern: ":organizationId/members",
     handler: async ({ request, params }) => {
-      await orgScope(request, "member:read");
+      const { organizationId } = await orgScopeFor(params.organizationId, "member:read");
       const query = searchParams(request);
       const role = query.get("role") ?? undefined;
       const status = query.get("status") ?? undefined;
       const [members, invites] = await Promise.all([
-        listMembers(params.organizationId ?? "", {
+        listMembers(organizationId, {
           role: role as never,
           status: status as never,
           search: query.get("q") ?? undefined,
         }),
-        listPendingInvites(params.organizationId ?? ""),
+        listPendingInvites(organizationId),
       ]);
       return jsonOk({ members, invites });
     },
@@ -135,10 +134,10 @@ const dispatch = createDispatcher([
     method: "POST",
     pattern: ":organizationId/members",
     handler: async ({ request, params }) => {
-      const scope = await orgScope(request, "member:invite");
+      const scope = await orgScopeFor(params.organizationId, "member:invite");
       const input = await parseBody(request, memberInviteSchema);
       const result = await inviteMember({
-        organizationId: params.organizationId ?? scope.organizationId,
+        organizationId: scope.organizationId,
         email: input.email,
         role: input.role,
         title: null,
@@ -151,9 +150,9 @@ const dispatch = createDispatcher([
     method: "PATCH",
     pattern: ":organizationId/members/:membershipId",
     handler: async ({ request, params }) => {
-      const scope = await orgScope(request, "member:update");
+      const scope = await orgScopeFor(params.organizationId, "member:update");
       const input = await parseBody(request, memberUpdateSchema);
-      const organizationId = params.organizationId ?? scope.organizationId;
+      const organizationId = scope.organizationId;
       const membershipId = params.membershipId ?? "";
 
       if (input.status) {
@@ -180,10 +179,10 @@ const dispatch = createDispatcher([
   {
     method: "DELETE",
     pattern: ":organizationId/members/:membershipId",
-    handler: async ({ request, params }) => {
-      const scope = await orgScope(request, "member:remove");
+    handler: async ({ params }) => {
+      const scope = await orgScopeFor(params.organizationId, "member:remove");
       await removeMember({
-        organizationId: params.organizationId ?? scope.organizationId,
+        organizationId: scope.organizationId,
         membershipId: params.membershipId ?? "",
         actorUserId: scope.userId,
       });
@@ -193,10 +192,10 @@ const dispatch = createDispatcher([
   {
     method: "DELETE",
     pattern: ":organizationId/invites/:inviteId",
-    handler: async ({ request, params }) => {
-      const scope = await orgScope(request, "member:invite");
+    handler: async ({ params }) => {
+      const scope = await orgScopeFor(params.organizationId, "member:invite");
       await revokeInvite({
-        organizationId: params.organizationId ?? scope.organizationId,
+        organizationId: scope.organizationId,
         inviteId: params.inviteId ?? "",
         actorUserId: scope.userId,
       });
@@ -207,10 +206,10 @@ const dispatch = createDispatcher([
     method: "GET",
     pattern: ":organizationId/audit",
     handler: async ({ request, params }) => {
-      const scope = await orgScope(request, "audit:read");
+      const { organizationId } = await orgScopeFor(params.organizationId, "audit:read");
       const query = searchParams(request);
       const logs = await listAuditLogs({
-        organizationId: params.organizationId ?? scope.organizationId,
+        organizationId,
         action: (query.get("action") ?? undefined) as never,
         limit: Number(query.get("limit") ?? 50) || 50,
       });

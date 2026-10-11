@@ -14,6 +14,7 @@
 
 import type { NextRequest } from "next/server";
 
+import { assertCsrf } from "@/lib/csrf";
 import { badRequest, notFound } from "@/lib/errors";
 import { route, type ApiContext } from "@/lib/http/api";
 import type { RateLimitName } from "@/lib/rate-limit";
@@ -29,6 +30,14 @@ export type ApiRouteDefinition = {
   handler: (context: DispatchContext) => Promise<Response> | Response;
   /** Politique de limitation de débit supplémentaire appliquée dans le handler. */
   rateLimit?: RateLimitName;
+  /**
+   * Protection CSRF. Activée par défaut sur les méthodes mutantes. Les points
+   * d'entrée qui *ouvrent* une session (inscription, connexion, réinitialisation)
+   * doivent la désactiver : aucun jeton ne peut exister avant le premier appel,
+   * l'exiger rendrait ces parcours impossibles. Ils restent protégés par la
+   * limitation de débit.
+   */
+  csrf?: boolean;
 };
 
 const METHODS: HttpMethod[] = ["GET", "POST", "PATCH", "PUT", "DELETE"];
@@ -101,11 +110,17 @@ export function createDispatcher(definitions: ApiRouteDefinition[]): Partial<Rec
         for (const definition of applicable) {
           const matched = matchPattern(definition.pattern, segments);
           if (!matched) continue;
+          // Le CSRF est vérifié après la résolution de la route : la décision
+          // dépend donc de la définition effectivement atteinte, et non de la
+          // méthode HTTP seule.
+          if (isMutating && definition.csrf !== false) {
+            assertCsrf(request);
+          }
           return definition.handler({ request, params: matched, requestId, path: segments });
         }
         throw notFound("Route API inconnue.");
       },
-      isMutating ? { rateLimit: "write" } : {},
+      { csrf: false, ...(isMutating ? { rateLimit: "write" } : {}) },
     ) as NextRouteHandler;
   }
 

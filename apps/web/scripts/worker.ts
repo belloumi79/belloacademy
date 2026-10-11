@@ -7,6 +7,8 @@
  *
  * Usage : `pnpm worker`
  */
+import "dotenv/config";
+
 
 import { env } from "../src/env";
 import { disconnectPrisma } from "../src/lib/db/prisma";

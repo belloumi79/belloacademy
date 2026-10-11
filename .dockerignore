@@ -1,0 +1,38 @@
+# Dépendances et artefacts locaux : jamais envoyés au démon Docker.
+node_modules
+**/node_modules
+.pnpm-store
+
+# Artefacts de build locaux (reconstruits dans l'image, pour la bonne plateforme)
+.next
+**/.next
+out
+dist
+build
+**/tsconfig.tsbuildinfo
+
+# Environnement : les secrets ne doivent jamais entrer dans une image
+.env
+.env.*
+!.env.example
+
+# Dépôts et métadonnées
+.git
+.gitignore
+.github
+
+# Journaux, caches d'outils, données locales
+*.log
+logs
+coverage
+**/coverage
+.vercel
+.turbo
+.cache
+var
+
+# Divers
+.DS_Store
+Thumbs.db
+.idea
+.vscode

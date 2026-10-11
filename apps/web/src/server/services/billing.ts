@@ -18,7 +18,7 @@ import { DEFAULT_PLANS, addInterval, type BillingInterval } from "@belloacademy/
 import { env } from "@/env";
 import { prismaPlatform, withTenant } from "@/lib/db/prisma";
 import { recordAudit } from "@/lib/audit";
-import { badRequest, conflict, forbidden, internal, notFound } from "@/lib/errors";
+import { badRequest, conflict, forbidden, notConfigured, notFound } from "@/lib/errors";
 import { logger } from "@/lib/logger";
 import { notifyWithEmail } from "@/lib/notifications";
 import { assertWithinPlan } from "@/server/services/organizations";
@@ -376,7 +376,7 @@ export async function handleWebhook(input: WebhookInput): Promise<WebhookResult>
   const current = env();
   const secret = current.STRIPE_WEBHOOK_SECRET;
   if (input.provider === "STRIPE") {
-    if (!secret) throw internal("STRIPE_WEBHOOK_SECRET n'est pas configuré.");
+    if (!secret) throw notConfigured("Webhook Stripe non configuré sur cette instance.");
     if (!verifyStripeSignature({ rawBody: input.rawBody, header: input.signatureHeader, secret })) {
       throw forbidden("Signature de webhook invalide.");
     }
@@ -528,7 +528,7 @@ async function applyWebhookEvent(input: {
             type: "BILLING",
             title: "Échec de paiement",
             body: `La facture ${invoice.number} n'a pas pu être réglée.`,
-            href: "/dashboard/organisation/facturation",
+            href: "/tableau-de-bord/facturation",
           },
           {
             to: owner.user.email,

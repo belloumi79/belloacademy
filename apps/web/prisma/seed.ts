@@ -18,11 +18,24 @@ import { createHash } from "node:crypto";
 import { DEFAULT_PLANS, resolveOrganizationSettings } from "@belloacademy/shared";
 
 import { prismaPlatform } from "@/lib/db/prisma";
-import { hashPassword } from "@/lib/auth/password";
+import { checkPasswordPolicy, hashPassword } from "@/lib/auth/password";
 
 const PASSWORD = process.env.SEED_PASSWORD ?? "BelloAcademy!2026";
 const DEMO_SLUG = "academie-bello";
 const DEMO_EMAIL_DOMAIN = "belloacademy.tn";
+
+/**
+ * Garde-fou de production.
+ *
+ * Le seed de démonstration crée des comptes à mot de passe connu et affiche ce
+ * mot de passe dans les journaux. C'est acceptable en développement, jamais en
+ * production : il faut alors une autorisation explicite, ou se limiter à
+ * l'amorçage du superadministrateur.
+ */
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const ALLOW_DEMO_DATA = process.env.SEED_ALLOW_DEMO_DATA === "true";
+const SUPER_ADMIN_EMAIL = process.env.SEED_SUPER_ADMIN_EMAIL?.trim().toLowerCase() || null;
+const SUPER_ADMIN_PASSWORD = process.env.SEED_SUPER_ADMIN_PASSWORD || null;
 
 type SeededUser = { id: string; email: string };
 
@@ -102,7 +115,53 @@ async function upsertPlans(): Promise<void> {
   }
 }
 
+/**
+ * Amorçage minimal en production : crée (ou promeut) le superadministrateur à
+ * partir des variables d'environnement, sans aucune donnée de démonstration.
+ */
+async function bootstrapSuperAdmin(): Promise<void> {
+  if (!SUPER_ADMIN_EMAIL || !SUPER_ADMIN_PASSWORD) {
+    throw new Error(
+      "Production : renseignez SEED_SUPER_ADMIN_EMAIL et SEED_SUPER_ADMIN_PASSWORD, " +
+        "ou définissez SEED_ALLOW_DEMO_DATA=true pour créer explicitement les données de démonstration.",
+    );
+  }
+
+  const policy = checkPasswordPolicy(SUPER_ADMIN_PASSWORD);
+  if (!policy.ok) {
+    throw new Error(`SEED_SUPER_ADMIN_PASSWORD refusé : ${policy.reasons.join(" ")}`);
+  }
+
+  const passwordHash = await hashPassword(SUPER_ADMIN_PASSWORD);
+  const admin = await prismaPlatform.user.upsert({
+    where: { email: SUPER_ADMIN_EMAIL },
+    update: { isSuperAdmin: true, status: "ACTIVE" },
+    create: {
+      email: SUPER_ADMIN_EMAIL,
+      name: "Superadministrateur",
+      passwordHash,
+      locale: "fr",
+      timezone: "Africa/Tunis",
+      isSuperAdmin: true,
+      status: "ACTIVE",
+      emailVerifiedAt: new Date(),
+    },
+    select: { email: true },
+  });
+
+  console.info("Forfaits et superadministrateur amorcés (aucune donnée de démonstration).");
+  console.info(`  Superadministrateur : ${admin.email}`);
+}
+
 async function main(): Promise<void> {
+  // En production, ni comptes de démonstration ni mot de passe affiché.
+  if (IS_PRODUCTION && !ALLOW_DEMO_DATA) {
+    console.info("→ Forfaits");
+    await upsertPlans();
+    await bootstrapSuperAdmin();
+    return;
+  }
+
   console.info("→ Forfaits");
   await upsertPlans();
 

@@ -6,7 +6,12 @@
 --              sans BYPASSRLS => les politiques Row Level Security s'appliquent.
 --
 -- Exécution (local ou conteneur) :
---   psql "postgresql://postgres@localhost:5432/postgres" -v owner_pw='...' -v app_pw='...' -f infra/sql/init-db.sql
+--   psql "postgresql://postgres@localhost:5432/postgres" \
+--     -v owner_pw='...' -v app_pw='...' -v platform_pw='...' -f infra/sql/init-db.sql
+--
+-- Les trois mots de passe sont fournis en variables psql : aucun secret n'est
+-- écrit en dur dans ce fichier. Pour le chemin Docker, voir
+-- infra/scripts/docker-init-db.sh (appelé par /docker-entrypoint-initdb.d).
 
 \set ON_ERROR_STOP on
 
@@ -52,8 +57,10 @@ ALTER DEFAULT PRIVILEGES FOR ROLE belloacademy_owner IN SCHEMA public
 -- (superadministration, facturation, résolution des appartenances à la connexion).
 -- Il porte BYPASSRLS : il contourne donc les politiques RLS. Il ne doit JAMAIS
 -- être utilisé pour servir une requête d'un utilisateur final.
-SELECT 'CREATE ROLE belloacademy_platform LOGIN BYPASSRLS PASSWORD ''belloacademy_platform_dev'''
+SELECT format('CREATE ROLE belloacademy_platform LOGIN BYPASSRLS PASSWORD %L', :'platform_pw')
   WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'belloacademy_platform') \gexec
+SELECT format('ALTER ROLE belloacademy_platform LOGIN BYPASSRLS PASSWORD %L', :'platform_pw')
+  \gexec
 ALTER ROLE belloacademy_platform NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
 
 \connect belloacademy

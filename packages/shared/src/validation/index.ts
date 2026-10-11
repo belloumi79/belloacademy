@@ -209,7 +209,35 @@ export const courseCreateSchema = z.object({
 });
 export type CourseCreateInput = z.infer<typeof courseCreateSchema>;
 
-export const courseUpdateSchema = courseCreateSchema.partial().extend({
+/**
+ * Mise à jour partielle d'une formation.
+ *
+ * Écrite explicitement, et non dérivée de `courseCreateSchema.partial()` : un
+ * schéma partiel conserve les valeurs par défaut de ses champs, si bien qu'une
+ * requête ne contenant que `title` renvoyait `description: ""`, `level:
+ * "BEGINNER"`, `objectives: []`, `priceCents: 0` et surtout `status: "DRAFT"`.
+ * Le service appliquait ces valeurs : corriger un titre repassait une formation
+ * publiée en brouillon et effaçait son prix, ses objectifs et ses prérequis.
+ * Ici, un champ absent n'est jamais transmis et ne peut donc rien écraser.
+ *
+ * `slug` et `status` sont volontairement exclus : ils sont gérés par les
+ * opérations dédiées (publication, archivage) et non par une mise à jour libre.
+ */
+export const courseUpdateSchema = z.object({
+  title: z.string().trim().min(4, "Le titre est trop court.").max(160).optional(),
+  subtitle: z.string().trim().max(200).nullable().optional(),
+  description: z.string().trim().max(20_000).optional(),
+  imageUrl: urlSchema.nullable().optional(),
+  categoryId: uuidSchema.nullable().optional(),
+  level: z.enum(COURSE_LEVELS).optional(),
+  language: z.enum(LOCALES).optional(),
+  objectives: z.array(z.string().trim().min(2).max(300)).max(20).optional(),
+  prerequisites: z.array(z.string().trim().min(2).max(300)).max(20).optional(),
+  priceCents: z.coerce.number().int().min(0).max(100_000_000).optional(),
+  currency: z.string().trim().length(3).toUpperCase().optional(),
+  certificateEnabled: z.boolean().optional(),
+  certificateMinScore: z.coerce.number().int().min(0).max(100).optional(),
+  durationMinutes: z.coerce.number().int().min(0).max(100_000).nullable().optional(),
   instructorId: uuidSchema.optional(),
 });
 export type CourseUpdateInput = z.infer<typeof courseUpdateSchema>;
@@ -245,8 +273,28 @@ export const lessonCreateSchema = z.object({
   assetId: uuidSchema.nullable().optional(),
 });
 
-export const lessonUpdateSchema = lessonCreateSchema.partial().omit({ sectionId: true }).extend({
+/**
+ * Mise à jour partielle d'une leçon.
+ *
+ * Écrite explicitement, et non dérivée de `lessonCreateSchema.partial()` : ce
+ * dernier conserve `type: "VIDEO"`, `contentMd: ""`, `durationSeconds: 0` et
+ * `isPreview: false` comme valeurs par défaut. Un PATCH ne portant que sur le
+ * titre renvoyait donc ces valeurs, et le service écrasait silencieusement le
+ * contenu de la leçon. Ici, un champ absent n'est jamais transmis.
+ *
+ * `isPublished` est indispensable : la publication d'une formation exige au
+ * moins une leçon publiée, et aucune autre route ne permet de la publier.
+ */
+export const lessonUpdateSchema = z.object({
   sectionId: uuidSchema.optional(),
+  title: z.string().trim().min(2).max(200).optional(),
+  type: z.enum(LESSON_TYPES).optional(),
+  contentMd: z.string().max(200_000).optional(),
+  videoUrl: urlSchema.nullable().optional(),
+  durationSeconds: z.coerce.number().int().min(0).max(360_000).optional(),
+  isPreview: z.boolean().optional(),
+  isPublished: z.boolean().optional(),
+  position: z.coerce.number().int().min(0).max(9999).optional(),
 });
 
 export const lessonResourceSchema = z.object({

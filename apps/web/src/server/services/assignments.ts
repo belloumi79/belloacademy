@@ -71,7 +71,7 @@ export async function createAssignment(input: CreateAssignmentInput) {
       courseId: input.courseId,
       title: "Nouveau devoir disponible",
       body: assignment.title,
-      href: `/app/assignments/${assignment.id}`,
+      href: `/tableau-de-bord/devoirs/${assignment.id}`,
       type: "ASSIGNMENT_POSTED",
     });
   }
@@ -375,7 +375,7 @@ export async function submitAssignment(input: SubmitAssignmentInput) {
         type: "ASSIGNMENT_POSTED",
         title: "Nouveau dépôt à corriger",
         body: result.assignment.title,
-        href: `/app/instructor/assignments/${result.assignment.id}`,
+        href: "/tableau-de-bord/evaluations/corrections",
       },
       {
         to: instructor.email,
@@ -453,7 +453,7 @@ export async function gradeSubmission(input: {
       type: "ASSIGNMENT_GRADED",
       title: "Votre devoir a été corrigé",
       body: `${graded.assignment.title} — ${graded.score}/${graded.assignment.maxScore}`,
-      href: `/app/assignments/${graded.assignmentId}`,
+      href: `/tableau-de-bord/devoirs/${graded.assignmentId}`,
     },
     {
       to: learner?.email ?? "",

@@ -146,7 +146,7 @@ async function notifyEnrolledLearners(input: {
       type: "LIVE_SESSION_REMINDER" as const,
       title: "Nouvelle classe virtuelle programmée",
       body: `${input.title} — ${when}`,
-      href: `/app/live/${input.sessionId}`,
+      href: `/tableau-de-bord/classes-virtuelles/${input.sessionId}`,
       data: { sessionId: input.sessionId },
     })),
   );

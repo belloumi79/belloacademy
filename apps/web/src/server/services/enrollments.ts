@@ -117,7 +117,7 @@ export async function enrollUser(input: EnrollInput) {
         type: "ENROLLMENT",
         title: "Inscription confirmée",
         body: `Vous êtes inscrit à « ${course.title} ».`,
-        href: `/app/courses/${course.slug}`,
+        href: `/tableau-de-bord/formations/${course.slug}`,
         data: { courseId: course.id, enrollmentId: enrollment.id },
       },
       tx,

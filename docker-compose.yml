@@ -1,0 +1,387 @@
+# =============================================================================
+# BelloAcademy — pile de production (Docker Compose)
+#
+# Démarrage minimal (plateforme sur http://localhost:3000, sans proxy TLS) :
+#   docker compose up -d
+#
+# Démarrage complet avec reverse proxy Caddy et HTTPS automatique :
+#   docker compose --profile proxy up -d
+#
+# Avec les classes virtuelles Jitsi Meet auto-hébergées :
+#   CADDYFILE=Caddyfile.jitsi docker compose --profile proxy --profile jitsi up -d
+#
+# Les valeurs par défaut permettent un premier lancement immédiat ; TOUTES les
+# variables sensibles doivent être redéfinies en production, soit dans un fichier
+# `.env` à la racine du dépôt (copié depuis .env.example), soit dans
+# l'environnement du serveur. Aucun secret n'est écrit en dur dans ce fichier.
+#
+# Voir docs/deployment.md pour la procédure complète.
+# =============================================================================
+
+name: belloacademy
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  APP_NAME: ${APP_NAME:-BelloAcademy}
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  DEFAULT_LOCALE: ${DEFAULT_LOCALE:-fr}
+  DEFAULT_TIMEZONE: ${DEFAULT_TIMEZONE:-Africa/Tunis}
+  DEFAULT_CURRENCY: ${DEFAULT_CURRENCY:-TND}
+  AUTH_SECRET: ${AUTH_SECRET:?AUTH_SECRET est requis — générez-le avec « openssl rand -base64 48 »}
+  SESSION_TTL_HOURS: ${SESSION_TTL_HOURS:-720}
+  DATABASE_URL: postgresql://belloacademy_app:${APP_PASSWORD:-belloacademy_app_dev}@postgres:5432/belloacademy
+  DATABASE_PLATFORM_URL: postgresql://belloacademy_platform:${PLATFORM_PASSWORD:-belloacademy_platform_dev}@postgres:5432/belloacademy
+  MIGRATE_DATABASE_URL: postgresql://belloacademy_owner:${OWNER_PASSWORD:-belloacademy_owner_dev}@postgres:5432/belloacademy
+  REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+  JOBS_ENABLED: ${JOBS_ENABLED:-true}
+  JOBS_POLL_INTERVAL_MS: ${JOBS_POLL_INTERVAL_MS:-5000}
+  STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-belloacademy}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID est requis}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY est requis}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+  JITSI_DOMAIN: ${JITSI_DOMAIN:-meet.jit.si}
+  JITSI_ROOM_PREFIX: ${JITSI_ROOM_PREFIX:-belloacademy}
+  JITSI_APP_ID: ${JITSI_APP_ID:-}
+  JITSI_APP_SECRET: ${JITSI_APP_SECRET:-}
+  JITSI_JWT_AUDIENCE: ${JITSI_JWT_AUDIENCE:-jitsi}
+  JITSI_JWT_ISSUER: ${JITSI_JWT_ISSUER:-belloacademy}
+  JITSI_REQUIRE_JWT: ${JITSI_REQUIRE_JWT:-false}
+  MAIL_DRIVER: ${MAIL_DRIVER:-console}
+  MAIL_FROM: ${MAIL_FROM:-BelloAcademy <no-reply@belloacademy.local>}
+  MAIL_SPOOL_DIR: ${MAIL_SPOOL_DIR:-/app/var/mail}
+  SMTP_URL: ${SMTP_URL:-}
+  BILLING_PROVIDER: ${BILLING_PROVIDER:-mock}
+  BILLING_CURRENCY: ${BILLING_CURRENCY:-TND}
+  STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+  STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+  TRUST_PROXY: ${TRUST_PROXY:-true}
+
+services:
+  # --- Base de données -------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:?POSTGRES_SUPERUSER_PASSWORD est requis}
+      POSTGRES_DB: postgres
+      # Lus par infra/scripts/docker-init-db.sh lors de la première initialisation.
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-belloacademy_owner_dev}
+      APP_PASSWORD: ${APP_PASSWORD:-belloacademy_app_dev}
+      PLATFORM_PASSWORD: ${PLATFORM_PASSWORD:-belloacademy_platform_dev}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/sql:/bootstrap-sql:ro
+      - ./infra/scripts/docker-init-db.sh:/docker-entrypoint-initdb.d/10-belloacademy.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks: [backend]
+
+  # --- Cache et limitation de débit -----------------------------------------
+  redis:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [backend]
+
+  # --- Stockage objet compatible S3 ------------------------------------------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID est requis}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY est requis}
+    volumes:
+      - minio-data:/data
+    ports:
+      # Console d'administration : à retirer ou restreindre en production.
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    networks: [backend]
+
+  # Crée le bucket applicatif une fois MinIO disponible (idempotent).
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?S3_ACCESS_KEY_ID est requis}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?S3_SECRET_ACCESS_KEY est requis}
+      S3_BUCKET: ${S3_BUCKET:-belloacademy}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        mc alias set bello "http://minio:9000" "$$S3_ACCESS_KEY_ID" "$$S3_SECRET_ACCESS_KEY"
+        mc mb --ignore-existing "bello/$$S3_BUCKET"
+        echo "Bucket $$S3_BUCKET prêt."
+    networks: [backend]
+
+  # --- Application -----------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *app-environment
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      # Applique `prisma migrate deploy` avant de démarrer le serveur.
+      RUN_MIGRATIONS_ON_START: ${RUN_MIGRATIONS_ON_START:-true}
+      RUN_RLS_ON_START: ${RUN_RLS_ON_START:-true}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - app-var:/app/apps/web/var
+    ports:
+      # Utile uniquement sans le profil « proxy » ; en production derrière Caddy,
+      # supprimez cette exposition (le réseau interne suffit).
+      - "${WEB_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+    networks: [backend]
+
+  # --- Worker de tâches asynchrones ------------------------------------------
+  # Traite la file `jobs` : e-mails, rappels de classes virtuelles, échéances
+  # d'abonnement, instantanés de consommation.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    command: ["pnpm", "--filter", "@belloacademy/web", "worker"]
+    environment:
+      <<: *app-environment
+      RUN_MIGRATIONS_ON_START: "false"
+      RUN_RLS_ON_START: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - app-var:/app/apps/web/var
+    networks: [backend]
+
+  # --- Reverse proxy et HTTPS (profil « proxy ») -----------------------------
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["proxy"]
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-localhost}
+      APP_UPSTREAM: ${APP_UPSTREAM:-web:3000}
+      JITSI_SITE_ADDRESS: ${JITSI_SITE_ADDRESS:-jitsi.localhost}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/${CADDYFILE:-Caddyfile}:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [backend]
+
+  # ===========================================================================
+  # Classes virtuelles Jitsi Meet auto-hébergées (profil « jitsi »)
+  #
+  # Activez avec : docker compose --profile proxy --profile jitsi up -d
+  # Le port 10000/udp doit être ouvert côté pare-feu pour le média WebRTC.
+  #
+  # JITSI_SITE_ADDRESS doit être un domaine distinct de SITE_DOMAIN et pointer
+  # vers ce serveur. Les quatre secrets (JICOFO_AUTH_PASSWORD, JVB_AUTH_PASSWORD,
+  # JICOFO_COMPONENT_SECRET, JITSI_APP_SECRET) doivent être générés
+  # aléatoirement — voir docs/jitsi.md. La pile refuse de démarrer s'ils
+  # manquent (garde-fou `jitsi-config-check`).
+  # ===========================================================================
+
+  # Garde-fou : échoue immédiatement si les secrets Jitsi ne sont pas définis,
+  # au lieu de lancer une instance avec des mots de passe de démonstration.
+  jitsi-config-check:
+    image: alpine:3.20
+    profiles: ["jitsi"]
+    restart: "no"
+    environment:
+      JICOFO_AUTH_PASSWORD: ${JICOFO_AUTH_PASSWORD:-}
+      JVB_AUTH_PASSWORD: ${JVB_AUTH_PASSWORD:-}
+      JICOFO_COMPONENT_SECRET: ${JICOFO_COMPONENT_SECRET:-}
+      JITSI_APP_SECRET: ${JITSI_APP_SECRET:-}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        missing=""
+        for pair in "JICOFO_AUTH_PASSWORD:$$JICOFO_AUTH_PASSWORD" \
+                    "JVB_AUTH_PASSWORD:$$JVB_AUTH_PASSWORD" \
+                    "JICOFO_COMPONENT_SECRET:$$JICOFO_COMPONENT_SECRET" \
+                    "JITSI_APP_SECRET:$$JITSI_APP_SECRET"; do
+          name="$${pair%%:*}"
+          value="$${pair#*:}"
+          case "$$value" in
+            ""|CHANGEZ_MOI*) missing="$$missing $$name" ;;
+          esac
+        done
+        if [ -n "$$missing" ]; then
+          echo "✗ Secrets Jitsi manquants ou non remplacés :$$missing" >&2
+          echo "  Générez-les avec « openssl rand -hex 32 » et renseignez-les dans .env." >&2
+          echo "  Procédure complète : docs/jitsi.md" >&2
+          exit 1
+        fi
+        echo "✓ Secrets Jitsi présents."
+    networks: [backend]
+
+  jitsi-web:
+    image: jitsi/web:stable
+    profiles: ["jitsi"]
+    restart: unless-stopped
+    environment: &jitsi-common
+      XMPP_DOMAIN: meet.jitsi
+      XMPP_AUTH_DOMAIN: auth.meet.jitsi
+      XMPP_MUC_DOMAIN: muc.meet.jitsi
+      XMPP_INTERNAL_MUC_DOMAIN: internal-muc.meet.jitsi
+      XMPP_GUEST_DOMAIN: guest.meet.jitsi
+      XMPP_RECORDER_DOMAIN: recorder.meet.jitsi
+      XMPP_CROSS_DOMAIN: cross.meet.jitsi
+      XMPP_BOSH_URL_BASE: http://prosody:5280
+      XMPP_MUC_MODULES: "muc_allowners,muc_password_whitelist"
+      # Volontairement sans valeur par défaut ici : ces secrets sont vérifiés
+      # par le service `jitsi-config-check` ci-dessous, qui refuse de démarrer
+      # la pile s'ils sont absents. Utiliser `:?` directement casserait
+      # `docker compose config` même sans le profil « jitsi », car Compose
+      # interpole l'environnement de TOUS les services du fichier.
+      JICOFO_AUTH_PASSWORD: ${JICOFO_AUTH_PASSWORD:-}
+      JVB_AUTH_PASSWORD: ${JVB_AUTH_PASSWORD:-}
+      JICOFO_COMPONENT_SECRET: ${JICOFO_COMPONENT_SECRET:-}
+      JIGASI_XMPP_PASSWORD: ${JIGASI_XMPP_PASSWORD:-jigasi_dev_password}
+      JIBRI_XMPP_PASSWORD: ${JIBRI_XMPP_PASSWORD:-jibri_dev_password}
+      JIBRI_RECORDER_PASSWORD: ${JIBRI_RECORDER_PASSWORD:-jibri_recorder_dev_password}
+      TZ: ${DEFAULT_TIMEZONE:-Africa/Tunis}
+      PUBLIC_URL: https://${JITSI_SITE_ADDRESS:-jitsi.localhost}
+      # Le proxy TLS est assuré par Caddy en amont : jitsi-web sert en HTTP
+      # et ne doit PAS rediriger vers HTTPS lui-même, sinon Caddy (qui retransmet
+      # en HTTP) provoque une boucle de redirection infinie.
+      DISABLE_HTTPS: "1"
+      ENABLE_HTTP_REDIRECT: ${ENABLE_HTTP_REDIRECT:-0}
+      ENABLE_LETSENCRYPT: "0"
+      ENABLE_XMPP_WEBSOCKET: "1"
+      ENABLE_AUTH: "1"
+      ENABLE_GUESTS: "1"
+      AUTH_TYPE: ${JITSI_AUTH_TYPE:-jwt}
+      JWT_APP_ID: ${JITSI_APP_ID:-belloacademy}
+      JWT_APP_SECRET: ${JITSI_APP_SECRET:-}
+      JWT_ACCEPTED_ISSUERS: ${JITSI_JWT_ISSUER:-belloacademy}
+      JWT_ACCEPTED_AUDIENCES: ${JITSI_JWT_AUDIENCE:-jitsi}
+      JWT_ALLOW_EMPTY: "0"
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      - jitsi-web-cfg:/config
+    depends_on:
+      prosody:
+        condition: service_started
+      jitsi-config-check:
+        condition: service_completed_successfully
+    networks: [backend]
+
+  prosody:
+    image: jitsi/prosody:stable
+    profiles: ["jitsi"]
+    restart: unless-stopped
+    environment:
+      <<: *jitsi-common
+    volumes:
+      - jitsi-prosody-cfg:/config
+    depends_on:
+      jitsi-config-check:
+        condition: service_completed_successfully
+    networks: [backend]
+
+  jicofo:
+    image: jitsi/jicofo:stable
+    profiles: ["jitsi"]
+    restart: unless-stopped
+    environment:
+      <<: *jitsi-common
+    volumes:
+      - jitsi-jicofo-cfg:/config
+    depends_on:
+      prosody:
+        condition: service_started
+      jitsi-config-check:
+        condition: service_completed_successfully
+    networks: [backend]
+
+  jvb:
+    image: jitsi/jvb:stable
+    profiles: ["jitsi"]
+    restart: unless-stopped
+    environment:
+      <<: *jitsi-common
+      JVB_PORT: "10000"
+      JVB_ADVERTISE_IPS: ${JVB_ADVERTISE_IPS:-}
+      JVB_TCP_HARVESTER_DISABLED: ${JVB_TCP_HARVESTER_DISABLED:-true}
+    volumes:
+      - jitsi-jvb-cfg:/config
+    ports:
+      # Média WebRTC : UDP en priorité, TCP en repli pour les réseaux filtrants.
+      - "10000:10000/udp"
+      - "10000:10000/tcp"
+    depends_on:
+      prosody:
+        condition: service_started
+      jitsi-config-check:
+        condition: service_completed_successfully
+    networks: [backend]
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  caddy-data:
+  caddy-config:
+  app-var:
+  jitsi-web-cfg:
+  jitsi-prosody-cfg:
+  jitsi-jicofo-cfg:
+  jitsi-jvb-cfg:
+
+networks:
+  backend:
+    driver: bridge

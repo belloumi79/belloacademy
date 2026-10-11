@@ -88,7 +88,7 @@ function registerLiveHandlers(): void {
       select: { userId: true, user: { select: { email: true, name: true, locale: true } } },
     });
 
-    const href = `/dashboard/live/${session.id}`;
+    const href = `/tableau-de-bord/classes-virtuelles/${session.id}`;
     await notifyMany(
       participants.map((participant) => ({
         userId: participant.userId,

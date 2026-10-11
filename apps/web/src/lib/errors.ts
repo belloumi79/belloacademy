@@ -17,6 +17,7 @@ export type ErrorCode =
   | "PAYLOAD_TOO_LARGE"
   | "UNSUPPORTED_MEDIA_TYPE"
   | "PLAN_LIMIT_REACHED"
+  | "NOT_CONFIGURED"
   | "INTERNAL";
 
 export class AppError extends Error {
@@ -69,6 +70,10 @@ export const unsupportedMediaType = (message = "Type de fichier non pris en char
 
 export const planLimitReached = (message: string, details?: unknown) =>
   new AppError(402, "PLAN_LIMIT_REACHED", message, { details });
+
+/** Service indisponible faute de configuration (503, jamais 500). */
+export const notConfigured = (message = "Service non configuré sur cette instance.") =>
+  new AppError(503, "NOT_CONFIGURED", message);
 
 export const internal = (message = "Une erreur interne est survenue.", context?: Record<string, unknown>) =>
   new AppError(500, "INTERNAL", message, { context });

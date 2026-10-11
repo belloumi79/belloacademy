@@ -9,7 +9,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { CourseStatus, LessonType } from "@/generated/prisma/enums";
 import { prismaPlatform, withTenant } from "@/lib/db/prisma";
-import { badRequest, conflict, notFound } from "@/lib/errors";
+import { badRequest, conflict, forbidden, notFound } from "@/lib/errors";
 import { recordAudit } from "@/lib/audit";
 import { slugify } from "@belloacademy/shared";
 import { assertWithinPlan, incrementUsage } from "@/server/services/organizations";
@@ -196,6 +196,68 @@ export async function getCourseById(organizationId: string, courseId: string) {
   );
   if (!course) throw notFound("Formation introuvable.");
   return course;
+}
+/**
+ * Vrai si `userId` est le formateur titulaire de la formation.
+ *
+ * Sert à borner l'action d'un INSTRUCTOR à son propre périmètre : le rôle
+ * `INSTRUCTOR` porte `course:update`, mais uniquement sur ses formations.
+ * Les administrateurs d'organisation et les superadministrateurs ne sont pas
+ * concernés par cette restriction.
+ */
+export async function instructorOwnsCourse(
+  organizationId: string,
+  courseId: string,
+  userId: string,
+): Promise<boolean> {
+  const course = await withTenant(organizationId, (tx) =>
+    tx.course.findUnique({ where: { id: courseId }, select: { instructorId: true } }),
+  );
+  return course?.instructorId === userId;
+}
+
+/**
+ * Formation telle qu'un formateur l'édite : tous les champs modifiables sont
+ * exposés, y compris les objectifs, les prérequis et le réglage du certificat.
+ */
+const COURSE_EDITOR_SELECT = {
+  ...COURSE_CARD_SELECT,
+  categoryId: true,
+  objectives: true,
+  prerequisites: true,
+  certificateEnabled: true,
+  certificateMinScore: true,
+} satisfies Prisma.CourseSelect;
+
+export async function getCourseForEditor(organizationId: string, courseId: string) {
+  const course = await withTenant(organizationId, (tx) =>
+    tx.course.findUnique({ where: { id: courseId }, select: COURSE_EDITOR_SELECT }),
+  );
+  if (!course) throw notFound("Formation introuvable.");
+  return course;
+}
+
+/**
+ * Contrôle de propriété sur une formation.
+ *
+ * Les rôles d'administration d'organisation gèrent toutes les formations de
+ * leur organisation ; un formateur ne peut modifier que les siennes. Le contrôle
+ * est côté serveur : il ne repose pas sur le masquage des liens dans l'interface.
+ */
+export async function assertCourseWriteAccess(input: {
+  organizationId: string;
+  courseId: string;
+  actorUserId: string;
+  actorRole: string | null;
+}): Promise<void> {
+  if (input.actorRole === "ORG_ADMIN" || input.actorRole === "BILLING_MANAGER") return;
+  const course = await withTenant(input.organizationId, (tx) =>
+    tx.course.findUnique({ where: { id: input.courseId }, select: { instructorId: true } }),
+  );
+  if (!course) throw notFound("Formation introuvable.");
+  if (course.instructorId !== input.actorUserId) {
+    throw forbidden("Vous ne pouvez modifier que les formations dont vous êtes le formateur.");
+  }
 }
 
 /** Programme complet (édition) : sections, leçons et ressources. */

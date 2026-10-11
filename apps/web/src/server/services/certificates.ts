@@ -249,7 +249,7 @@ export async function issueCertificate(input: IssueCertificateInput) {
     type: "CERTIFICATE_ISSUED",
     title: "Votre certificat est disponible",
     body: `Certificat délivré pour « ${course.title} ».`,
-    href: `/certificates/${certificate.id}`,
+    href: "/tableau-de-bord/certificats",
   });
 
   return certificate;

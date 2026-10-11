@@ -32,6 +32,8 @@ import { badRequest, conflict, forbidden, notFound, unauthenticated, validationE
 import { enqueue } from "@/lib/jobs";
 import { logger } from "@/lib/logger";
 import { issueCsrfToken } from "@/lib/csrf";
+import { createOrganization } from "@/server/services/organizations";
+import { consumeInvite } from "@/server/services/members";
 
 const MAX_FAILED_LOGINS = 8;
 const LOCK_DURATION_MS = 15 * 60 * 1000;
@@ -54,8 +56,19 @@ export type RegisterInput = {
   name: string;
   locale?: string;
   timezone?: string;
-  /** Organisation rejointe automatiquement (inscription publique sur un tenant). */
+  /**
+   * Nom de l'organisation à créer pour cet utilisateur (inscription
+   * self-service). Le créateur en devient administrateur.
+   */
+  organizationName?: string | null;
+  /**
+   * Identifiant d'organisation.
+   *  - avec `organizationName` : identifiant imposé à la nouvelle organisation ;
+   *  - seul : rejoint une organisation existante en tant qu'apprenant.
+   */
   organizationSlug?: string | null;
+  /** Invitation à consommer : l'utilisateur rejoint l'organisation invitante. */
+  inviteToken?: string | null;
 };
 
 export type AuthenticatedUser = {
@@ -105,8 +118,16 @@ async function sendVerificationEmail(userId: string, email: string, name: string
 }
 
 /**
- * Inscription. Un utilisateur peut rejoindre une organisation existante
- * (inscription publique) ; sinon il crée la sienne plus tard depuis son espace.
+ * Inscription self-service.
+ *
+ * Trois cas, par ordre de priorité :
+ *  1. `inviteToken` : rejoint l'organisation qui a invité, avec le rôle prévu ;
+ *  2. `organizationName` : crée une nouvelle organisation dont l'utilisateur
+ *     devient administrateur (`organizationSlug` fixe alors son identifiant) ;
+ *  3. `organizationSlug` seul : rejoint une organisation existante en apprenant.
+ *
+ * Sans aucune de ces informations, le compte est créé sans organisation :
+ * l'utilisateur pourra en créer une plus tard depuis son espace.
  */
 export async function register(input: RegisterInput): Promise<AuthenticatedUser> {
   const email = normalizeEmail(input.email);
@@ -116,14 +137,21 @@ export async function register(input: RegisterInput): Promise<AuthenticatedUser>
     throw conflict("Un compte existe déjà avec cette adresse e-mail.");
   }
 
-  const organization = input.organizationSlug
-    ? await prismaPlatform.organization.findFirst({
-        where: { slug: input.organizationSlug, deletedAt: null },
-        select: { id: true, name: true },
-      })
-    : null;
+  const joinSlug = input.organizationSlug?.trim() || null;
+  const organizationName = input.organizationName?.trim() || null;
+  const inviteToken = input.inviteToken?.trim() || null;
 
-  if (input.organizationSlug && !organization) {
+  // Une organisation existante n'est recherchée que si aucun nom n'est fourni :
+  // sinon le slug désigne l'identifiant souhaité pour la nouvelle organisation.
+  const joinable =
+    joinSlug && !organizationName
+      ? await prismaPlatform.organization.findFirst({
+          where: { slug: joinSlug, deletedAt: null },
+          select: { id: true, name: true },
+        })
+      : null;
+
+  if (joinSlug && !organizationName && !joinable) {
     throw notFound("Organisation introuvable.");
   }
 
@@ -151,11 +179,26 @@ export async function register(input: RegisterInput): Promise<AuthenticatedUser>
     },
   });
 
-  if (organization) {
+  let organizationId: string | null = joinable?.id ?? null;
+  let joinedRole: string | null = joinable ? "LEARNER" : null;
+
+  if (inviteToken) {
+    const joined = await consumeInvite({ token: inviteToken, userId: user.id, userEmail: email });
+    organizationId = joined.organizationId;
+    joinedRole = joined.role;
+  } else if (organizationName) {
+    const organization = await createOrganization({
+      name: organizationName,
+      ...(joinSlug ? { slug: joinSlug } : {}),
+      ownerUserId: user.id,
+    });
+    organizationId = organization.id;
+    joinedRole = "ORG_ADMIN";
+  } else if (joinable) {
     await prismaPlatform.membership.create({
       data: {
         userId: user.id,
-        organizationId: organization.id,
+        organizationId: joinable.id,
         role: "LEARNER",
         status: "ACTIVE",
         joinedAt: new Date(),
@@ -170,8 +213,8 @@ export async function register(input: RegisterInput): Promise<AuthenticatedUser>
     actorUserId: user.id,
     entityType: "User",
     entityId: user.id,
-    organizationId: organization?.id ?? null,
-    metadata: { organizationSlug: input.organizationSlug ?? null },
+    organizationId,
+    metadata: { organizationSlug: joinSlug, joinedRole },
   });
 
   return publicUser(user);

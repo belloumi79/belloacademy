@@ -1,0 +1,44 @@
+# =============================================================================
+# BelloAcademy — reverse proxy et terminaison HTTPS (Caddy)
+#
+# Caddy obtient et renouvelle automatiquement les certificats Let's Encrypt dès
+# que SITE_DOMAIN est un vrai domaine pointant vers ce serveur. Aucun certificat
+# à gérer manuellement, aucun renouvellement à planifier.
+#
+# Variables lues depuis l'environnement du conteneur (voir docker-compose.yml) :
+#   SITE_DOMAIN   — domaine public de la plateforme (ex. academy.example.tn)
+#   APP_UPSTREAM  — adresse interne du serveur Next.js (ex. web:3000)
+#
+# Pour recevoir les alertes d'expiration Let's Encrypt, ajoutez en tête de ce
+# fichier un bloc global :
+#   {
+#       email admin@votre-domaine.tn
+#   }
+# =============================================================================
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		# HSTS : le navigateur n'acceptera plus de revenir en HTTP clair.
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Les fichiers transitent par l'API applicative, qui applique ses propres
+	# limites par catégorie. Ce plafond n'est qu'un garde-fou de premier niveau.
+	request_body {
+		max_size 64MB
+	}
+
+	reverse_proxy {$APP_UPSTREAM} {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

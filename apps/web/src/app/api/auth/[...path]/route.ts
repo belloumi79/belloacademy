@@ -47,6 +47,7 @@ const dispatch = createDispatcher([
   {
     method: "POST",
     pattern: "register",
+    csrf: false,
     handler: async ({ request }) => {
       await enforceRateLimit("register", clientIp(request));
       const input = await parseBody(request, registerSchema);
@@ -59,6 +60,7 @@ const dispatch = createDispatcher([
   {
     method: "POST",
     pattern: "login",
+    csrf: false,
     handler: async ({ request }) => {
       await enforceRateLimit("login", clientIp(request));
       const input = await parseBody(request, loginSchema);
@@ -80,6 +82,7 @@ const dispatch = createDispatcher([
   {
     method: "POST",
     pattern: "verify-email",
+    csrf: false,
     handler: async ({ request }) => {
       await enforceRateLimit("emailVerification", clientIp(request));
       const { token } = await parseBody(request, verifyEmailSchema);
@@ -90,6 +93,7 @@ const dispatch = createDispatcher([
   {
     method: "POST",
     pattern: "resend-verification",
+    csrf: false,
     handler: async () => {
       const context = await requireAuth();
       await enforceRateLimit("emailVerification", context.user.id);
@@ -100,6 +104,7 @@ const dispatch = createDispatcher([
   {
     method: "POST",
     pattern: "forgot-password",
+    csrf: false,
     handler: async ({ request }) => {
       await enforceRateLimit("passwordReset", clientIp(request));
       const { email } = await parseBody(request, forgotPasswordSchema);
@@ -111,6 +116,7 @@ const dispatch = createDispatcher([
   {
     method: "POST",
     pattern: "reset-password",
+    csrf: false,
     handler: async ({ request }) => {
       await enforceRateLimit("passwordReset", clientIp(request));
       const input = await parseBody(request, resetPasswordSchema);

@@ -123,7 +123,7 @@ export function renderTemplate(
     }
     case "enrollment_confirmation": {
       const courseTitle = String(context.courseTitle ?? "une formation");
-      const url = `${appUrl}/dashboard/learn/${String(context.courseId ?? "")}`;
+      const url = `${appUrl}/tableau-de-bord/formations/${String(context.courseSlug ?? "")}`;
       return {
         subject: `Inscription confirmée : ${courseTitle}`,
         text: `${name},\n\nVotre inscription à « ${courseTitle} » est confirmée.\nAccéder à la formation : ${url}`,
@@ -137,7 +137,7 @@ export function renderTemplate(
     case "assignment_posted": {
       const title = String(context.title ?? "un devoir");
       const dueAt = context.dueAt ? `Échéance : ${new Date(String(context.dueAt)).toLocaleString("fr-TN")}.` : "";
-      const url = `${appUrl}/dashboard/courses/${String(context.courseId ?? "")}`;
+      const url = `${appUrl}/tableau-de-bord/evaluations/corrections`;
       return {
         subject: `Nouveau devoir : ${title}`,
         text: `${name},\n\nUn nouveau devoir a été publié : « ${title} ». ${dueAt}\n${url}`,
@@ -150,7 +150,7 @@ export function renderTemplate(
     case "assignment_graded": {
       const title = String(context.assignmentTitle ?? "votre devoir");
       const score = context.score === null || context.score === undefined ? "corrigé" : `noté ${String(context.score)}`;
-      const url = `${appUrl}/dashboard/assessments`;
+      const url = `${appUrl}/tableau-de-bord/devoirs`;
       return {
         subject: `Devoir corrigé : ${title}`,
         text: `${name},\n\nVotre devoir « ${title} » a été ${score}.\n${url}`,
@@ -164,7 +164,7 @@ export function renderTemplate(
       const title = String(context.quizTitle ?? "votre évaluation");
       const score = `${String(context.score ?? 0)}/${String(context.maxScore ?? 0)}`;
       const passed = Boolean(context.passed);
-      const url = `${appUrl}/dashboard/assessments`;
+      const url = `${appUrl}/tableau-de-bord/evaluations`;
       return {
         subject: `Résultat : ${title} — ${score}`,
         text: `${name},\n\nVotre résultat pour « ${title} » est de ${score} (${passed ? "réussi" : "non validé"}).\n${url}`,
@@ -180,7 +180,7 @@ export function renderTemplate(
       const startsAt = context.startsAt
         ? new Date(String(context.startsAt)).toLocaleString("fr-TN", { timeZone: String(context.timezone ?? "Africa/Tunis") })
         : "";
-      const url = `${appUrl}/dashboard/live`;
+      const url = `${appUrl}/tableau-de-bord/classes-virtuelles`;
       return {
         subject: `Rappel : ${title}`,
         text: `${name},\n\nRappel : « ${title} » commence le ${startsAt} (${String(context.timezone ?? "Africa/Tunis")}).\n${url}`,
@@ -196,8 +196,8 @@ export function renderTemplate(
       const message = String(context.message ?? "");
       return {
         subject,
-        text: `${name},\n\n${message}\n\n${appUrl}/dashboard/billing`,
-        html: layout(subject, paragraph(message), { label: "Gérer mon abonnement", url: `${appUrl}/dashboard/billing` }),
+        text: `${name},\n\n${message}\n\n${appUrl}/tableau-de-bord/facturation`,
+        html: layout(subject, paragraph(message), { label: "Gérer mon abonnement", url: `${appUrl}/tableau-de-bord/facturation` }),
       };
     }
     default: {

@@ -174,8 +174,16 @@ export async function resolveCurrentOrganizationId(
   candidate?: string | null,
 ): Promise<string | null> {
   const headerList = await headers();
-  const fromHeader = candidate ?? headerList.get("x-organization-id");
-  if (fromHeader && findMembership(context, fromHeader)) return fromHeader;
+  const explicit = candidate ?? headerList.get("x-organization-id");
+  // Une organisation demandée explicitement est une assertion, pas une
+  // préférence : si l'appelant n'en est pas membre, on refuse au lieu de
+  // retomber silencieusement sur une autre organisation (fuite inter-tenant).
+  if (explicit) {
+    if (!findMembership(context, explicit)) {
+      throw forbidden("Vous n'appartenez pas à cette organisation.");
+    }
+    return explicit;
+  }
 
   const cookieStore = await cookies();
   const fromCookie = cookieStore.get("belloacademy_org")?.value ?? null;

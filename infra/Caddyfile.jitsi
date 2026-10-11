@@ -1,0 +1,62 @@
+# =============================================================================
+# BelloAcademy — reverse proxy applicatif + Jitsi Meet auto-hébergé (Caddy)
+#
+# Variante utilisée avec le profil « jitsi » de docker-compose.yml :
+#   CADDYFILE=Caddyfile.jitsi docker compose --profile jitsi up -d
+#
+# Prérequis DNS : DEUX noms doivent pointer vers ce serveur, par exemple
+#   academy.example.tn   → SITE_DOMAIN       (plateforme)
+#   meet.example.tn      → JITSI_SITE_ADDRESS (Jitsi)
+#
+# Le port 10000/udp doit également être ouvert côté pare-feu : il transporte le
+# média WebRTC (audio/vidéo). Sans lui, les réunions s'ouvrent mais restent
+# silencieuses et noires. Voir docs/jitsi.md.
+#
+# jitsi-web sert en HTTP derrière Caddy et ne redirige pas vers HTTPS lui-même
+# (ENABLE_HTTP_REDIRECT=0 par défaut) : une redirection interne créerait une
+# boucle infinie, Caddy retransmettant les requêtes en HTTP vers jitsi-web:80.
+# =============================================================================
+
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	request_body {
+		max_size 64MB
+	}
+
+	reverse_proxy {$APP_UPSTREAM} {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+# --- Jitsi Meet --------------------------------------------------------------
+# Caddy gère les montées de connexion (WebSocket) nativement : /xmpp-websocket
+# et /http-bind traversent ce proxy sans configuration supplémentaire.
+{$JITSI_SITE_ADDRESS} {
+	encode zstd gzip
+
+	header -Server
+
+	reverse_proxy jitsi-web:80 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Forwarded-Host {host}
+		header_up X-Real-IP {remote_host}
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}

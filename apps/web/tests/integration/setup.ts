@@ -31,7 +31,7 @@ if (process.env.TEST_SHADOW_DATABASE_URL) {
 }
 (process.env as Record<string, string>).NODE_ENV = "test";
 // Secrets déterministes pour les tests : aucune valeur réelle n'est utilisée.
-process.env.STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "whsec_test_belloacademy";
+process.env.STRIPE_WEBHOOK_SECRET = "whsec_test_belloacademy";
 
 execFileSync("pnpm", ["exec", "prisma", "migrate", "deploy"], {
   stdio: "inherit",

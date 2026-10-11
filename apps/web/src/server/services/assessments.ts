@@ -498,7 +498,7 @@ export async function submitAttempt(input: {
       outcome.attempt.passed === null
         ? `Score provisoire : ${outcome.attempt.score}/${outcome.attempt.maxScore} — correction en attente.`
         : `${outcome.attempt.score}/${outcome.attempt.maxScore} — ${outcome.attempt.passed ? "réussi" : "non réussi"}.`,
-    href: `/courses/${outcome.courseSlug}`,
+    href: `/tableau-de-bord/formations/${outcome.courseSlug}`,
   });
 
   if (outcome.attempt.passed && outcome.certificateEnabled) {
